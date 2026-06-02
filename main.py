@@ -81,7 +81,7 @@ def generate_tool_tests(params: dict, tool) -> dict:
 	tests = {}
 	if tool == "ior":
 		for cfg in _generate_combos(params):
-			name = f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize.{cfg['directio']}-directio.{cfg['fileperproc']}-fileperproc.{cfg['fsync']}-fsync.{cfg['api']}-api.{cfg['checksums']}-checksums.{cfg['operation']}"
+			name = f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize.{cfg['directio']}-directio.{cfg['fileperproc']}-fileperproc.{cfg['randomoffset']}-random.{cfg['api']}-api.{cfg['checksums']}-checksums.{cfg['operation']}"
 			tests[name] = cfg
 	elif tool == "mdtest":
 		for cfg in _generate_combos(params):
