@@ -60,7 +60,7 @@ class IORBenchmark:
 			f'{self.mpi_conf} --np {self.params["ppn"]} '
 			f'{self.ior_path} -a {self.params["api"]} -v -d 1 '
 			f'-b {self.params["blocksize"]} -t {self.params["xfersize"]} '
-			f'{run_options} {self.params["extra_args"]} -o {data_path}/f {directio}'
+			f'{run_options} {self.params["extra_args"]} -o {data_path}/f'
 
 		)
 
