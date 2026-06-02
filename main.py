@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import Any, Union
 from monitoring import SFAMonitoring
+from benchmarks.ior import IORBenchmark
+from benchmarks.mdtest import MDTestBenchmark
 from datetime import datetime
 import time
 
@@ -49,22 +51,18 @@ def setup_logging(log_path, tool):
 
 	### Setup the runID directory
 	global now, runid, stamp, file_stamp, runid_base
-	print(f"changing now variable from {now}...")
 	now = datetime.now()
-	print(f"...to {now}")
 	runid = int(now.timestamp())
 	file_stamp = now.strftime("%Y-%m-%d_%H:%M:%S")
 	stamp = now.strftime("%Y%m%d_%H%M")
-	print(f"file stamp is {file_stamp}")
 	runid_base = f"{runid}_{stamp}"
-	print(f"for {tool} this is our runID {runid}_{stamp}")
 	time.sleep(5)
 
+	### Create directories for logs
 	path = Path(f"{log_path}/{tool}/{runid_base}")
 	path.mkdir(parents=True, exist_ok=True)
 
 	
-
 def main() -> None:
 	config_data = load_config_file(config_file)
 	setup_vars(config_data)
@@ -83,8 +81,14 @@ def main() -> None:
 		)
 		monitoring.start()
 
-		time.sleep(30)
-		### RUN BENCHMARK HERE
+		### RUN BENCHMARKING HERE
+		if tool == "ior":
+			ior = IORBenchmark(config=config_data)
+			ior.start()
+		elif tool == "mdtest":
+			mdtest = MDTestBenchmark(config=config_data)
+			mdtest.start()
+		
 
 		monitoring.stop()
 
