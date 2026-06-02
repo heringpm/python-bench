@@ -66,12 +66,12 @@ class IORBenchmark:
 
 		print("Starting IOR benchmark!")
 		print(cmd)
-		#process = subprocess.Popen(
-		#    ["bash", "-c", cmd],
-		#    stdin=subprocess.DEVNULL,
-		#    stdout=log_file,
-		#    stderr=log_file
-		#)
+		process = subprocess.Popen(
+		    ["bash", "-c", cmd],
+		    stdin=subprocess.DEVNULL,
+		    stdout=log_file,
+		    stderr=log_file
+		)
 
 
 
