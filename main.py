@@ -61,7 +61,7 @@ def setup_logging(log_path, tool):
 	time.sleep(5)
 
 	path = Path(f"{log_path}/{tool}/{runid_base}")
-	#path.parent.mkdir(parents=True, exists_ok=True)
+	path.parent.mkdir(parents=True, exists_ok=True)
 
 	
 
