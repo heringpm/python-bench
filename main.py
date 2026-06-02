@@ -101,36 +101,58 @@ def main() -> None:
 		tool_tests = config_data[0]["tests"][tool]
 		all_tool_tests = generate_tool_tests(tool_tests, tool)
 
-		for test, params in all_tool_tests.items():
-			### Startup SFA Monitoring
-			monitoring = SFAMonitoring(
-				appliances=appliances,
-				log_path=log_path,
-				runid_base=runid_base,
-				tool=tool,
-				fname=f"{runid}_{file_stamp}_{test}_log.out"
-			)
-			monitoring.start()
-			### RUN BENCHMARKING HERE
-			if tool == "ior":
-				ior = IORBenchmark(
-					params=params,
-					mpirun_path=mpirun_path,
-					mpi_conf=mpi_conf,
-					ior_path=tool_path,
-					data_path_root=data_path_root,
+		### Setup some progress messaging
+		total = len(all_tool_tests)
+		completed = 0
+		interrupted = False
+
+		try:
+			for test, params in all_tool_tests.items():
+				print(f"[{completed + 1}/{total}] Running: {test}")
+				### Startup SFA Monitoring
+				monitoring = SFAMonitoring(
+					appliances=appliances,
 					log_path=log_path,
 					runid_base=runid_base,
-					fname=f"{runid}_{file_stamp}_{test}_ior.log",
-					machinefile=machinefile
+					tool=tool,
+					fname=f"{runid}_{file_stamp}_{test}_log.out"
 				)
-				ior.start()
-			elif tool == "mdtest":
-				mdtest = MDTestBenchmark(config=config_data)
-				#mdtest.start()
-			
+				monitoring.start()
+				### RUN BENCHMARKING HERE
+				if tool == "ior":
+					ior = IORBenchmark(
+						params=params,
+						mpirun_path=mpirun_path,
+						mpi_conf=mpi_conf,
+						ior_path=tool_path,
+						data_path_root=data_path_root,
+						log_path=log_path,
+						runid_base=runid_base,
+						fname=f"{runid}_{file_stamp}_{test}_ior.log",
+						machinefile=machinefile
+					)
+					ior.start()
+				elif tool == "mdtest":
+					mdtest = MDTestBenchmark(config=config_data)
+					#mdtest.start()
 
-			monitoring.stop()
+				completed += 1
+				print(f"[{completed}/{total}] Finished: {test}\n")
+		except KeyboardInterrupt:
+			interrupted = True
+
+		finally:
+			print("\n--- Run Summary ---")
+			print(f"Total tests:     {total}")
+			print(f"Completed:       {completed}")
+			print(f"Not run:         {total - completed}")
+			if interrupted:
+				print("Status:          INTERRUPTED (Ctrl+C)")
+			else:
+				print("Status:          COMPLETED")
+
+
+		monitoring.stop()
 
 if __name__ == "__main__":
 	main()
