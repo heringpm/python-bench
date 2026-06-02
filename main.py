@@ -110,7 +110,7 @@ def main() -> None:
 				tool=tool,
 				fname=f"{runid}_{file_stamp}_{test}_log.out"
 			)
-			#monitoring.start()
+			monitoring.start()
 			print(params)
 			### RUN BENCHMARKING HERE
 			if tool == "ior":
@@ -125,7 +125,7 @@ def main() -> None:
 					fname=f"{runid}_{file_stamp}_{test}_ior.log",
 					machinefile=machinefile
 				)
-				#ior.start()
+				ior.start()
 			elif tool == "mdtest":
 				mdtest = MDTestBenchmark(config=config_data)
 				#mdtest.start()
