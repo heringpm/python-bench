@@ -53,25 +53,24 @@ class IORBenchmark:
 		data_path = Path(f"{self.data_path_root}/ior")
 		data_path.mkdir(parents=True, exist_ok=True)
 
-		log_file = open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log", "w")
+		with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log", "w") as log_file:
 
-		cmd = (
-			f'{self.mpirun_path} --machinefile {self.machinefile} '
-			f'{self.mpi_conf} --np {self.params["ppn"]} '
-			f'{self.ior_path} -a {self.params["api"]} -v -d 1 '
-			f'-b {self.params["blocksize"]} -t {self.params["xfersize"]} '
-			f'{run_options} {self.params["extra_args"]} -o {data_path}/f'
+			cmd = (
+				f'{self.mpirun_path} --machinefile {self.machinefile} '
+				f'{self.mpi_conf} --np {self.params["ppn"]} '
+				f'{self.ior_path} -a {self.params["api"]} -v -d 1 '
+				f'-b {self.params["blocksize"]} -t {self.params["xfersize"]} '
+				f'{run_options} {self.params["extra_args"]} -o {data_path}/f'
 
-		)
+			)
 
-		print("Starting IOR benchmark!")
-		print(cmd)
-		process = subprocess.Popen(
-		    ["bash", "-c", cmd],
-		    stdin=subprocess.DEVNULL,
-		    stdout=log_file,
-		    stderr=log_file
-		)
+			print("Starting IOR benchmark!")
+			process = subprocess.run(
+			    ["bash", "-c", cmd],
+			    stdin=subprocess.DEVNULL,
+			    stdout=log_file,
+			    stderr=log_file
+			)
 
 
 
