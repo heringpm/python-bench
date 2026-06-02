@@ -5,7 +5,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 from monitoring import SFAMonitoring
 from datetime import datetime
 
@@ -19,7 +19,7 @@ appliances = None
 run_log_base = None
 
 
-def load_config_file(path: str | Path):
+def load_config_file(path: Union[str, Path]):
 	raw = json.loads(Path(path).read_text(encoding="utf-8"))
 	if not isinstance(raw, list):
 		raise ValueError("Settings file must contain a JSON array of objects.")
