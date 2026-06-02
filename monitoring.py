@@ -8,10 +8,11 @@ iostat_script = "/work/scripts/mark/iostats_aggregator_generic2025.sh"
 
 class SFAMonitoring:
 
-	def __init__(self, appliances: dict, log_path, tools, fname):
+	def __init__(self, appliances: dict, log_path, runid_base, tool, fname):
 		self.appliances = appliances
 		self.log_path = log_path
-		self.tools = tools
+		self.runid_base = runid_base
+		self.tool = tool
 		self.fname = fname
 		self.processes = {}
 
@@ -22,36 +23,33 @@ class SFAMonitoring:
 			print("Old Monitoring is still running. Clean up and try again!")
 			exit	
 
-		for tool in self.tools.keys():
-			for appliance, vm in self.appliances.items():
-				for stat in ("vdstats", "pdstats", "iostats"):
-					stat_log_file = open(f"{self.log_path}/{tool}/{self.fname}.{stat}.{appliance}", "w")
-						
-					if stat == "vdstats":
-						print("starting "+stat+" on "+appliance)
-						script = vdstat_script
-						host = appliance+"-c1"
-					elif stat == "pdstats":
-						print("starting "+stat+" on "+appliance)
-						script = pdstat_script
-						host = appliance+"-c0"
-					elif stat == "iostats":
-						print("starting "+stat+" on "+vm)
-						host = vm
+		for appliance, vm in self.appliances.items():
+			for stat in ("vdstats", "pdstats", "iostats"):
+				stat_log_file = open(f"{self.log_path}/{tool}/{self.runid_base}/{self.fname}.{stat}.{appliance}", "w")
+					
+				if stat == "vdstats":
+					print(f"starting {stat} on {appliance}")
+					script = vdstat_script
+					host = f"{appliance}-c1"
+				elif stat == "pdstats":
+					print(f"starting {stat} on {appliance}")
+					script = pdstat_script
+					host = f"{appliance}-c0"
+				elif stat == "iostats":
+					print(f"starting {stat} on {vm}")
+					host = vm
 
 
-					stat_process = subprocess.Popen(
-						["bash", "-c", script, host],
-						stdin=subprocess.DEVNULL,
-						stdout=stat_log_file,
-						stderr=stat_log_file
-					)
-					self.processes[appliance] = {
-						"process": stat_process,
-						"log_file": stat_log_file
-					}
-
-					print(f"Started monitor for {appliance} (PID {stat_process.pid})")
+				stat_process = subprocess.Popen(
+					["bash", "-c", script, host],
+					stdin=subprocess.DEVNULL,
+					stdout=stat_log_file,
+					stderr=stat_log_file
+				)
+				self.processes[appliance] = {
+					"process": stat_process,
+					"log_file": stat_log_file
+				}
 
 
 	def stop(self):
