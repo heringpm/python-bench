@@ -1,9 +1,11 @@
 import time
+from itertools import product
 
 class IORBenchmark:
-	def __init__(self, config):
-		self.config = config
-
+	def __init__(self, params, mpi_path, ior_path):
+		self.params = params
+		self.mpi_path = mpi_path
+		self.ior_path = ior_path
 
 
 	def start(self):

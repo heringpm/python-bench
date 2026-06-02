@@ -70,6 +70,8 @@ def main() -> None:
 	# Setup the logging root path
 	for tool in tools:
 		setup_logging(log_path, tool)
+		tool_path = tools[tool].items()
+		print(tool_path)
 
 		### Startup SFA Monitoring
 		monitoring = SFAMonitoring(
@@ -79,15 +81,19 @@ def main() -> None:
 			tool=tool,
 			fname=f"{runid}_{file_stamp}_{tool}_log.out"
 		)
-		monitoring.start()
+		#monitoring.start()
 
 		### RUN BENCHMARKING HERE
 		if tool == "ior":
-			ior = IORBenchmark(config=config_data)
-			ior.start()
+			ior = IORBenchmark(
+				params=config_data,
+				mpi_path=mpi_path,
+				ior_path=tool_path
+			)
+			#ior.start()
 		elif tool == "mdtest":
 			mdtest = MDTestBenchmark(config=config_data)
-			mdtest.start()
+			#mdtest.start()
 		
 
 		monitoring.stop()

@@ -10,24 +10,19 @@
       "400x3e01": "sv30[0-3]",
       "400x3e03": "sv33[0-3]"
     },
-    "collectors": {
-      "pdstats_appliances": ["400x3e07i-c0", "400x3e07i-c2"],
-      "vdstats_appliances": ["400x3e07i-c1", "400x3e07i-c3"],
-      "iostats_host_groups": ["sv37[0-1]", "sv38[0-1]"]
+    "ior": {
+        "clients":   [16],
+        "ppn":       [64],
+        "api":       ["posix"],
+        "checksums": ["off"],
+        "xfersize":  ["1m", "16m"],
+        "directio":  ["on"],
+        "operation": ["write", "read"]
     },
-    "defaults": {
-      "clients": 16,
-      "ppn": 64,
-      "api": "posix",
-      "checksums": "off",
-      "transfer_size": "1m",
-      "directio": "on",
-      "operation": "write",
-      "block_size": "32g"
-    },
-    "matrix": {
-      "transfer_size": ["1m", "16m"],
-      "operation": ["write", "read"]
+    "mdtest": {
+        "clients":   [16],
+        "ppn":       [64],
+        "objects":   [4000]
     }
   }
 ]
