@@ -83,6 +83,7 @@ def main() -> None:
 		)
 		monitoring.start()
 
+		time.sleep(30)
 		### RUN BENCHMARK HERE
 
 		monitoring.stop()
