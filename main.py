@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 from monitoring import SFAMonitoring
+from datetime import datetime
 
 
 
@@ -15,6 +16,7 @@ mpi_path = None
 tools = None
 log_path = None
 appliances = None
+run_log_base = None
 
 
 def load_config_file(path: str | Path):
@@ -41,10 +43,8 @@ def setup_logging(log_path):
 	for tool in tools:
 		tool_path = Path(log_path+"/"+tool)
 		#tool_path.parent.mkdir(parents=True, exists_ok=True)
+
 	
-	# -----Old way of doing this---- setup the logging path for each tool
-	#for tool in tools:
-	#	print("mkdir "+log_path+"/"+tool)	
 
 def main() -> None:
 	config_data = load_config_file(config_file)
@@ -55,7 +55,7 @@ def main() -> None:
 
 	### Startup SFA Monitoring
 	monitoring = SFAMonitoring(
-		appliances=config_data[0]["appliances"],
+		appliances=appliances,
 		log_path=log_path,
 		tools=tools,
 		fname="log.out"

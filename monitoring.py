@@ -13,7 +13,7 @@ class SFAMonitoring:
 		self.log_path = log_path
 		self.tools = tools
 		self.fname = fname
-		self.processes = []
+		self.processes = {}
 
 	def start(self):
 
@@ -28,15 +28,15 @@ class SFAMonitoring:
 					stat_log_file = open(f"{self.log_path}/{tool}/{self.fname}.{stat}.{appliance}", "w")
 						
 					if stat == "vdstats":
-						print("starting " stat " on " appliance)
+						print("starting "+stat+" on "+appliance)
 						script = vdstat_script
-						host = appliance"-c1"
+						host = appliance+"-c1"
 					elif stat == "pdstats":
-						print("starting " stat " on " appliance)
+						print("starting "+stat+" on "+appliance)
 						script = pdstat_script
-						host = appliance-"c0"
-					elif stat == "iostats"
-						print("starting " stat " on " vm)
+						host = appliance+"-c0"
+					elif stat == "iostats":
+						print("starting "+stat+" on "+vm)
 						host = vm
 
 
@@ -50,6 +50,8 @@ class SFAMonitoring:
 						"process": stat_process,
 						"log_file": stat_log_file
 					}
+
+					print(f"Started monitor for {appliance} (PID {process.pid})")
 
 
 	def stop(self):
