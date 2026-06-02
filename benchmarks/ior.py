@@ -44,7 +44,7 @@ class IORBenchmark:
 		log_file = open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log", "w")
 
 		cmd = (
-			f'{self.mpi_path} --machinefile {self.machinefile} '
+			f'{self.mpirun_path} --machinefile {self.machinefile} '
 			f'{self.mpi_conf} --np {self.params["ppn"]} '
 			f'{self.ior_path} -a {self.params["api"]} -v -d 1 '
 			f'-b {self.params["blocksize"]} -t {self.params["xfersize"]} '
