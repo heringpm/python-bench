@@ -13,4 +13,4 @@ class MDTestBenchmark:
 
 
 	def stop(self):
-		continue
+		print("stopping BM")

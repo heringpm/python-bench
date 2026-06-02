@@ -13,4 +13,4 @@ class IORBenchmark:
 
 
 	def stop(self):
-		continue
+		print("stopping BM")
