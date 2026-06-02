@@ -29,19 +29,20 @@ class SFAMonitoring:
 					
 				if stat == "vdstats":
 					print(f"starting {stat} on {appliance}")
-					script = vdstat_script
+					script = f"{vdstat_script} {appliance}-c1"
 					host = f"{appliance}-c1"
 				elif stat == "pdstats":
 					print(f"starting {stat} on {appliance}")
-					script = pdstat_script
+					script = f"{pdstat_script} {appliance}-c0"
 					host = f"{appliance}-c0"
 				elif stat == "iostats":
 					print(f"starting {stat} on {vm}")
+					script = f'{iostat_script} "{vm}"'
 					host = vm
 
 
 				stat_process = subprocess.Popen(
-					["bash", "-c", script, host],
+					["bash", "-c", script],
 					stdin=subprocess.DEVNULL,
 					stdout=stat_log_file,
 					stderr=stat_log_file
