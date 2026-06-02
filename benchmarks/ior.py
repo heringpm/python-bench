@@ -35,7 +35,7 @@ class IORBenchmark:
 		if self.params["directio"] == 1:
 			directio = "--posix.odirect"
 
-		data_path = Path(f"{data_path_root}/ior")
+		data_path = Path(f"{self.data_path_root}/ior")
 		data_path.mkdir(parents=True, exist_ok=True)
 
 		log_file = open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log")
