@@ -81,7 +81,7 @@ def main() -> None:
 			tool=tool,
 			fname=f"{runid}_{file_stamp}_{tool}_log.out"
 		)
-		#monitoring.start()
+		monitoring.start()
 
 		### RUN BENCHMARK HERE
 
