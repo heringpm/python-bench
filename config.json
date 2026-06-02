@@ -1,7 +1,7 @@
 [
   {
     "mpirun_path": "/work/bin/benchmark_bin/openmpi-5.0.10b/bin/mpirun",
-    "log_path": "/work/projects/2026_0520_EDF_400X3M_IB_TLC_IO500/logs",
+    "log_path": "/work/home/phering/logging_bench_test",
     "tools": {
       "ior": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/ior",
       "mdtest": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/ior"
