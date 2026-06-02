@@ -66,7 +66,6 @@ class IORBenchmark:
 
 			)
 
-			print("Starting IOR benchmark!")
 			process = subprocess.run(
 			    ["bash", "-c", cmd],
 			    stdin=subprocess.DEVNULL,
@@ -80,7 +79,7 @@ class IORBenchmark:
 		        if "Max Write" in line or "Max Read" in line:
 		            # equivalent to awk - split on whitespace and grab columns
 		            cols = line.split()
-		            print(f"{cols[0]} {cols[1]} {cols[2]} {cols[3]}")
+		            print(f"       {cols[0]} {cols[1]} {cols[2]} {cols[3]}")
 
 
 	def stop(self):

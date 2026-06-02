@@ -107,7 +107,7 @@ def main() -> None:
 		interrupted = False
 
 		print(f"\n{'='*60}")
-		print(f"  IOR Benchmark Run — {total} tests queued")
+		print(f"  {tool} Benchmark Run — {total} tests queued")
 		print(f"{'='*60}\n")
 
 		try:
