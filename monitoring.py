@@ -23,20 +23,20 @@ class SFAMonitoring:
 			print("Old Monitoring is still running. Clean up and try again!")
 			exit	
 
+		start_stats_message = "Starting stat collection on "
+
 		for appliance, vm in self.appliances.items():
 			for stat in ("vdstats", "pdstats", "iostats"):
+				start_stats_message += appliance
 				stat_log_file = open(f"{self.log_path}/{self.tool}/{self.runid_base}/{self.fname}.{stat}.{appliance}", "w")
 					
 				if stat == "vdstats":
-					print(f"starting {stat} on {appliance}")
 					script = f"{vdstat_script} {appliance}-c1"
 					host = f"{appliance}-c1"
 				elif stat == "pdstats":
-					print(f"starting {stat} on {appliance}")
 					script = f"{pdstat_script} {appliance}-c0"
 					host = f"{appliance}-c0"
 				elif stat == "iostats":
-					print(f"starting {stat} on {vm}")
 					script = f'{iostat_script} "{vm}"'
 					host = vm
 

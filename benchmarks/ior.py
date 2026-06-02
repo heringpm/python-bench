@@ -25,6 +25,8 @@ class IORBenchmark:
 
 		### build out needed params
 
+		total_ppn = self.params["ppn"] * self.params["clients"]
+
 		run_options = ""
 		## OPERATION
 		if self.params["operation"] == "write":
@@ -57,7 +59,7 @@ class IORBenchmark:
 
 			cmd = (
 				f'{self.mpirun_path} --machinefile {self.machinefile} '
-				f'{self.mpi_conf} --np {self.params["ppn"]} '
+				f'{self.mpi_conf} --np {total_ppn} '
 				f'{self.ior_path} -a {self.params["api"]} -v -d 1 '
 				f'-b {self.params["blocksize"]} -t {self.params["xfersize"]} '
 				f'{run_options} {self.params["extra_args"]} -o {data_path}/f'
@@ -78,8 +80,7 @@ class IORBenchmark:
 		        if "Max Write" in line or "Max Read" in line:
 		            # equivalent to awk - split on whitespace and grab columns
 		            cols = line.split()
-		            print(cols)        # see what columns look like first
-		            value = cols[2] 
+		            print(f"{cols[0]} {cols[1]}: {cols[2]} {cols[3]}")
 
 
 	def stop(self):

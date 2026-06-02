@@ -111,7 +111,6 @@ def main() -> None:
 				fname=f"{runid}_{file_stamp}_{test}_log.out"
 			)
 			monitoring.start()
-			print(params)
 			### RUN BENCHMARKING HERE
 			if tool == "ior":
 				ior = IORBenchmark(
