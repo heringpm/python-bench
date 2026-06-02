@@ -51,7 +51,7 @@ class SFAMonitoring:
 						"log_file": stat_log_file
 					}
 
-					print(f"Started monitor for {appliance} (PID {process.pid})")
+					print(f"Started monitor for {appliance} (PID {stat_process.pid})")
 
 
 	def stop(self):
