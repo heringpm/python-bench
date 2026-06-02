@@ -106,9 +106,13 @@ def main() -> None:
 		completed = 0
 		interrupted = False
 
+		print(f"\n{'='*60}")
+		print(f"  IOR Benchmark Run — {total} tests queued")
+		print(f"{'='*60}\n")
+
 		try:
 			for test, params in all_tool_tests.items():
-				print(f"[{completed + 1}/{total}] Running: {test}")
+				print(f"  ▶  [{completed + 1}/{total}] {test}")
 				### Startup SFA Monitoring
 				monitoring = SFAMonitoring(
 					appliances=appliances,
@@ -137,19 +141,19 @@ def main() -> None:
 					#mdtest.start()
 
 				completed += 1
-				print(f"[{completed}/{total}] Finished: {test}\n")
+				print(f"  ✓  [{completed}/{total}] Done\n")
 		except KeyboardInterrupt:
 			interrupted = True
 
 		finally:
-			print("\n--- Run Summary ---")
-			print(f"Total tests:     {total}")
-			print(f"Completed:       {completed}")
-			print(f"Not run:         {total - completed}")
-			if interrupted:
-				print("Status:          INTERRUPTED (Ctrl+C)")
-			else:
-				print("Status:          COMPLETED")
+			print(f"\n{'='*60}")
+			print(f"  Summary")
+			print(f"{'─'*60}")
+			print(f"  Total:      {total}")
+			print(f"  Completed:  {completed}")
+			print(f"  Not run:    {total - completed}")
+			print(f"  Status:     {'✓ COMPLETED' if not interrupted else '✗ INTERRUPTED'}")
+			print(f"{'='*60}\n")
 
 
 		monitoring.stop()
