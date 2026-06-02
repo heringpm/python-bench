@@ -72,6 +72,14 @@ class IORBenchmark:
 			    stderr=log_file
 			)
 
+		with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log", "r") as f:
+		    for line in f:
+		        # equivalent to grep
+		        if "Max Write" in line or "Max Read" in line:
+		            # equivalent to awk - split on whitespace and grab columns
+		            cols = line.split()
+		            print(cols)        # see what columns look like first
+		            value = cols[2] 
 
 
 	def stop(self):
