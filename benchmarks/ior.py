@@ -1,4 +1,7 @@
 import time
+import os
+import subprocess
+import threading
 from itertools import product
 from pathlib import Path
 
@@ -38,7 +41,7 @@ class IORBenchmark:
 		data_path = Path(f"{self.data_path_root}/ior")
 		data_path.mkdir(parents=True, exist_ok=True)
 
-		log_file = open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log")
+		log_file = open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log", "w")
 
 		cmd = (
 			f'{self.mpi_path} --machinefile {self.machinefile} '
@@ -50,13 +53,13 @@ class IORBenchmark:
 		)
 
 		print("Starting IOR benchmark!")
-
-		process = subprocess.Popen(
-		    ["bash", "-c", cmd],
-		    stdin=subprocess.DEVNULL,
-		    stdout=log_file,
-		    stderr=log_file
-		)
+		print(cmd)
+		#process = subprocess.Popen(
+		#    ["bash", "-c", cmd],
+		#    stdin=subprocess.DEVNULL,
+		#    stdout=log_file,
+		#    stderr=log_file
+		#)
 
 
 
