@@ -68,9 +68,9 @@ def main() -> None:
 	setup_vars(config_data)
 
 	# Setup the logging root path
-	for tool in tools:
+	for tool, path in tools.items():
 		setup_logging(log_path, tool)
-		tool_path = tools[tool].items()
+		tool_path = path
 		print(tool_path)
 
 		### Startup SFA Monitoring
