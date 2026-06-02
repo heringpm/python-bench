@@ -1,0 +1,33 @@
+[
+  {
+    "mpirun_path": "/work/bin/benchmark_bin/openmpi-5.0.10b/bin/mpirun",
+    "log_path": "/work/projects/2026_0520_EDF_400X3M_IB_TLC_IO500/logs",
+    "tools": {
+      "ior": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/ior",
+      "mdtest": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/ior"
+    },
+    "appliances": {
+      "400x3e01": "sv30[0-3]",
+      "400x3e03": "sv33[0-3]"
+    },
+    "collectors": {
+      "pdstats_appliances": ["400x3e07i-c0", "400x3e07i-c2"],
+      "vdstats_appliances": ["400x3e07i-c1", "400x3e07i-c3"],
+      "iostats_host_groups": ["sv37[0-1]", "sv38[0-1]"]
+    },
+    "defaults": {
+      "clients": 16,
+      "ppn": 64,
+      "api": "posix",
+      "checksums": "off",
+      "transfer_size": "1m",
+      "directio": "on",
+      "operation": "write",
+      "block_size": "32g"
+    },
+    "matrix": {
+      "transfer_size": ["1m", "16m"],
+      "operation": ["write", "read"]
+    }
+  }
+]
