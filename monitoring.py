@@ -25,7 +25,7 @@ class SFAMonitoring:
 
 		for appliance, vm in self.appliances.items():
 			for stat in ("vdstats", "pdstats", "iostats"):
-				stat_log_file = open(f"{self.log_path}/{tool}/{self.runid_base}/{self.fname}.{stat}.{appliance}", "w")
+				stat_log_file = open(f"{self.log_path}/{self.tool}/{self.runid_base}/{self.fname}.{stat}.{appliance}", "w")
 					
 				if stat == "vdstats":
 					print(f"starting {stat} on {appliance}")
