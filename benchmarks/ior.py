@@ -24,19 +24,31 @@ class IORBenchmark:
 
 
 		### build out needed params
+
+		run_options = ""
 		## OPERATION
 		if self.params["operation"] == "write":
-			operation = "-w"
+			run_options += " -w "
 		elif self.params["operation"] == "read":
-			operation = "-r"
+			run_options += " -r "
+
+		## KEEP FILES
+		if self.params["keep_files"] == 1:
+			run_options += " -k "
 
 		## FILE PER PROC
 		if self.params["fileperproc"] == 1:
-			fileperproc = "-F"
+			run_options += " -F "
 
 		## DIRECT IO
 		if self.params["directio"] == 1:
-			directio = "--posix.odirect"
+			run_options += " --posix.odirect "
+
+		## RANDOM
+		if self.params["randomoffset"] == 1:
+			run_options += " -z "
+
+
 
 		data_path = Path(f"{self.data_path_root}/ior")
 		data_path.mkdir(parents=True, exist_ok=True)
@@ -48,7 +60,7 @@ class IORBenchmark:
 			f'{self.mpi_conf} --np {self.params["ppn"]} '
 			f'{self.ior_path} -a {self.params["api"]} -v -d 1 '
 			f'-b {self.params["blocksize"]} -t {self.params["xfersize"]} '
-			f'{operation} {fileperproc} -k -o {data_path}/f {directio}'
+			f'{run_options} {self.params["extra_args"]} -o {data_path}/f {directio}'
 
 		)
 
