@@ -18,11 +18,12 @@ class MDTestBenchmark:
 
 		## CLIENTS TO USE
 		with open(self.machinefile, "r") as f:
-			line_count = sum(1 for line in f)
+			lines = f.readlines()
+    		line_count = len(lines)
 			client_count = int(self.params["clients"])
-			print(f"machinefile = {f}")
+			print(f"machinefile = {lines}")
 			print(f"client count = {client_count}")
-			hosts = [line.strip() for line in f.readlines()[:client_count]]
+			hosts = [line.strip() for line in lines[:client_count]]
 			host_string = ",".join(hosts)
 
 			print(f"host string = {host_string}")
