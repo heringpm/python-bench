@@ -66,7 +66,7 @@ class IORBenchmark:
 
 		## DATA POOLS
 		if self.params["pools"] != "default":
-			data_path = Path(f"{self.data_path_root}/ior/{self.params["pools"]}")
+			data_path = Path(f"{self.data_path_root}/ior/{self.params['pools']}")
 			data_path.mkdir(parents=True, exist_ok=True)
 			pool_stripe_cmd = f"lfs setstripe -p {self.params["pools"]} {data_path}"
 
