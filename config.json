@@ -14,6 +14,7 @@
       "400x3e03": "sv33[0-3]"
     },
     "tests": {
+      "ior": {}
       "mdtest": {
         "clients":        [16],
         "ppn":            [64],
