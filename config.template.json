@@ -15,7 +15,7 @@
     },
     "tests": {
       "ior": {
-        "clients":        [16],
+        "clients":        [1,2,4,8,16],
         "ppn":            [64],
         "api":            ["posix"],
         "checksums":      ["off"],
