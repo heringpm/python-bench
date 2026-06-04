@@ -46,7 +46,7 @@ class IORBenchmark:
 			if self.deletefiles:
 				print("Cleaning up datapath from previous runs...")
 				deletefiles_cmd = f"rm -rf {data_path}/*"
-				deletefiles_process = subprocess.run(["bash", "-c", pool_stripe_cmd])
+				deletefiles_process = subprocess.run(["bash", "-c", deletefiles_cmd])
 		elif self.params["operation"] == "read":
 			run_options += " -r "
 
