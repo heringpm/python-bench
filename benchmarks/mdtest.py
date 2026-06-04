@@ -69,13 +69,12 @@ class MDTestBenchmark:
 
 		with open(f"{self.log_path}/mdtest/{self.runid_base}/{self.fname}.mdtest.log", "w") as log_file:
 
-			print(cmd)
-			#process = subprocess.run(
-			#    ["bash", "-c", cmd],
-			#    stdin=subprocess.DEVNULL,
-			#    stdout=log_file,
-			#    stderr=log_file
-			#)
+			process = subprocess.run(
+			    ["bash", "-c", cmd],
+			    stdin=subprocess.DEVNULL,
+			    stdout=log_file,
+			    stderr=log_file
+			)
 
 
 	def stop(self):
