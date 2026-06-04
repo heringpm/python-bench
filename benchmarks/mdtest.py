@@ -38,16 +38,6 @@ class MDTestBenchmark:
 		if self.params.get("extra_args"): cmd += f' {self.params["extra_args"]}'
 
 
-		cmd = (
-				f'{self.mpirun_path} --machinefile {self.machinefile} '
-				f'{self.mpi_conf} --np {total_ppn} '
-				f'{self.mdtest_path} -a {self.params["api"]} -v -d 1 '
-				f'-b {self.params["blocksize"]} -t {self.params["xfersize"]} '
-				f'{run_options} {self.params["extra_args"]} -o {data_path}/f'
-
-			)
-
-
 		return cmd
 
 	def start(self):
@@ -56,6 +46,8 @@ class MDTestBenchmark:
 		
 		data_path = Path(f"{self.data_path_root}/mdtest")
 		data_path.mkdir(parents=True, exist_ok=True)
+
+		cmd += f" -d {data_path}"
 
 		with open(f"{self.log_path}/mdtest/{self.runid_base}/{self.fname}.mdtest.log", "w") as log_file:
 			process = subprocess.run(
