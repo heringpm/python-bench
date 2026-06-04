@@ -14,6 +14,20 @@
       "400x3e03": "sv33[0-3]"
     },
     "tests": {
+      "ior": {
+        "clients":        [16],
+        "ppn":            [64],
+        "api":            ["posix"],
+        "checksums":      ["off"],
+        "blocksize":      ["10g"],
+        "xfersize":       ["1m", "16m"],
+        "directio":       [1],
+        "operation":      ["write", "read"],
+        "randomoffset":   [0],
+        "fileperproc":    [1],
+        "keep_files":     [1],
+        "extra_args":     ["-e"]
+      },
       "mdtest": {
         "clients":        [16],
         "ppn":            [64],

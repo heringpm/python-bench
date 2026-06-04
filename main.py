@@ -4,6 +4,8 @@
 
 import json
 import os
+import re
+import subprocess
 from pathlib import Path
 from typing import Any, Union
 from monitoring import SFAMonitoring
@@ -16,6 +18,7 @@ import time
 
 
 config_file = Path("./config.json")
+fstrim_script = Path("/work/scripts/benchmark_script/fstrim_lustredevs_parallel.sh")
 mpirun_path = None
 tools = None
 log_path = None
@@ -81,13 +84,43 @@ def generate_tool_tests(params: dict, tool) -> dict:
 	tests = {}
 	if tool == "ior":
 		for cfg in _generate_combos(params):
-			name = f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize.{cfg['directio']}-directio.{cfg['fileperproc']}-fileperproc.{cfg['randomoffset']}-random.{cfg['api']}-api.{cfg['checksums']}-checksums.{cfg['operation']}"
+			name = (
+				f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize."
+				f"{cfg['directio']}-directio.{cfg['fileperproc']}-fileperproc.{cfg['randomoffset']}-random."
+				f"{cfg['api']}-api.{cfg['checksums']}-checksums.{cfg['operation']}"
+			)
 			tests[name] = cfg
 	elif tool == "mdtest":
 		for cfg in _generate_combos(params):
-			name = f"mdtest_{cfg['clients']}clients_{cfg['ppn']}ppn_{cfg['objects']}"
+			name = (
+				f"mdtest.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['objects']}-objects.{cfg['branching']}."
+				f"{cfg['depth']}-depth.{cfg['bytesread']}-bytesread.{cfg['byteswrite']}-byteswrite.{cfg['iterations']}-iterations."
+				f"{cfg['itemsperdir']}-itemsperdir.{cfg['directio']}-directio.{cfg['onlycreate']}-onlycreate.{cfg['onlystat']}-onlystat."
+				f"{cfg['onlyread']}-onlyread.{cfg['onlyremove']}-onlyremove.{cfg['dironly']}-dironly.{cfg['fileonly']}-fileonly."
+				f"{cfg['uniquedir']}-uniquedir.{cfg['syncafterwrite']}-syncafterwrite"
+			)
 			tests[name] = cfg
 	return tests
+
+def test_prep():
+	### This will run fstrim and drop all client and server caches
+	all_vms = ",".join(appliances.values())
+	first_vm = list(appliances.values())[0]  # "sv30[0-3]"
+	match = re.search(r"(\w+)\[(\d+)-\d+\]", first_vm)
+	if match:
+		first_vm = f"{match.group(1)}{match.group(2)}"
+	
+
+	fstrim_cmd = f"ssh {first_vm} 'clush -ab {fstrim_script}'"
+	server_cache_cmd = f"clush --machinefile {machinefile} 'echo 3 > /proc/sys/vm/drop_caches'"
+	client_cache_cmd = f"clush -w {all_vms} 'echo 3 > /proc/sys/vm/drop_caches'"
+
+	print("Running fstrim...")
+	process = subprocess.run(["bash", "-c", fstrim_cmd])
+	print("Dropping cache on servers...")
+	process = subprocess.run(["bash", "-c", server_cache_cmd])
+	print("Dropping cache on clients...")
+	process = subprocess.run(["bash", "-c", client_cache_cmd])
 
 	
 def main() -> None:
@@ -122,6 +155,9 @@ def main() -> None:
 					fname=f"{runid}_{file_stamp}_{test}_log.out"
 				)
 				monitoring.start()
+				### PREP FILESYSTEM FOR TEST
+				test_prep()
+
 				### RUN BENCHMARKING HERE
 				if tool == "ior":
 					ior = IORBenchmark(
@@ -138,7 +174,7 @@ def main() -> None:
 					ior.start()
 				elif tool == "mdtest":
 					mdtest = MDTestBenchmark(config=config_data)
-					#mdtest.start()
+					mdtest.start()
 
 				completed += 1
 				print(f"  ✓  [{completed}/{total}] Done\n")

@@ -16,9 +16,7 @@ class IORBenchmark:
 		self.runid_base = runid_base
 		self.fname = fname
 		self.machinefile = machinefile
-
-
-	
+		
 
 	def start(self):
 
