@@ -39,9 +39,9 @@ mpi_conf = None
 
 def read_arguments():
 	parser = argparse.ArgumentParser(description="Storage Benchmarking Suite")
-	parser.add_argument("--fstrim", help="Run fstrim on filesystem before tests")
-	parser.add_argument("--dropclientcache", help="Drop cache on clients before tests")
-	parser.add_argument("--dropservercache", help="Drop cache on servers before tests")
+	parser.add_argument("--fstrim", action="store_true", help="Run fstrim on filesystem before tests")
+	parser.add_argument("--dropclientcache", action="store_true", help="Drop cache on clients before tests")
+	parser.add_argument("--dropservercache", action="store_true", help="Drop cache on servers before tests")
 
 	args = parser.parse_args()
 
