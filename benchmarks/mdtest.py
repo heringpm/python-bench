@@ -23,6 +23,8 @@ class MDTestBenchmark:
 			hosts = [line.strip() for line in f.readlines()[:client_count]]
 			host_string = ",".join(hosts)
 
+			print(host_string)
+
 			if line_count == self.params["clients"]:
 				hosts_var = f"--machinefile {self.machinefile}"
 			elif line_count > self.params["clients"]:
