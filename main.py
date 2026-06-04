@@ -140,7 +140,7 @@ def test_prep(args):
 	
 def main() -> None:
 
-	read_arguments()
+	args = read_arguments()
 
 	config_data = load_config_file(config_file)
 	setup_vars(config_data)
