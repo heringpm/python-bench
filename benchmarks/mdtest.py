@@ -35,7 +35,7 @@ class MDTestBenchmark:
 		if self.params.get("dironly"): cmd += f' -D'
 		if self.params.get("fileonly"): cmd += f' -F'
 		if self.params.get("uniquedir"): cmd += f' -u'
-		if self.params.get("verbose"): cmd += f' {self.params["itemsperdir"]}'
+		if self.params.get("verbose"): cmd += f' {self.params["verbose"]}'
 		if self.params.get("syncafterwrite"): cmd += f' -y'
 		if self.params.get("extra_args"): cmd += f' {self.params["extra_args"]}'
 
