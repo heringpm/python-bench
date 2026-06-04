@@ -127,13 +127,13 @@ def test_prep(args):
 	client_cache_cmd = f"clush --machinefile {machinefile} 'echo 3 > /proc/sys/vm/drop_caches'"
 	server_cache_cmd = f"clush -w {all_vms} 'echo 3 > /proc/sys/vm/drop_caches'"
 
-	if args.get("fstrim"): 
+	if args("fstrim"): 
 		print("Running fstrim...")
 		process = subprocess.run(["bash", "-c", fstrim_cmd])
-	if args.get("drop-client-cache"):
+	if args("drop-client-cache"):
 		print("Dropping cache on servers...")
 		process = subprocess.run(["bash", "-c", server_cache_cmd])
-	if args.get("drop-server-cache"):	
+	if args("drop-server-cache"):	
 		print("Dropping cache on clients...")
 		process = subprocess.run(["bash", "-c", client_cache_cmd])
 
