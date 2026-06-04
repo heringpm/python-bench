@@ -18,23 +18,17 @@ class MDTestBenchmark:
 
 		## CLIENTS TO USE
 		with open(self.machinefile, "r") as f:
-			lines = f.readlines()
-			line_count = len(lines)
+			line_count = sum(1 for line in f)
 			client_count = int(self.params["clients"])
-			print(f"machinefile = {lines}")
-			print(f"client count = {client_count}")
-			hosts = [line.strip() for line in lines[:client_count]]
+			hosts = [line.strip() for line in f.readlines()[:client_count]]
 			host_string = ",".join(hosts)
-
-			print(f"host string = {host_string}")
 
 			if line_count == self.params["clients"]:
 				hosts_var = f"--machinefile {self.machinefile}"
 			elif line_count > self.params["clients"]:
 				hosts_var = f"--host {host_string}"
 			elif line_count < self.params["clients"]:
-				print("not enough clients in machinefile to satisfy client count request!")
-				exit()
+				raise ValueError("ERROR - Not enough clients in machinefile to satisfy client count request!")
 
 		total_ppn = self.params["ppn"] * self.params["clients"]
 		cmd = f"{self.mpirun_path} {hosts_var} {self.mpi_conf} --np {total_ppn} {self.mdtest_path} "

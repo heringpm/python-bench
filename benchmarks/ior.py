@@ -60,10 +60,7 @@ class IORBenchmark:
 			elif line_count > self.params["clients"]:
 				hosts_var = f"--host {host_string}"
 			elif line_count < self.params["clients"]:
-				print("not enough clients in machinefile to satisfy client count request!")
-				exit()
-
-
+				raise ValueError("ERROR - Not enough clients in machinefile to satisfy client count request!")
 
 
 		data_path = Path(f"{self.data_path_root}/ior")
