@@ -42,11 +42,6 @@ class IORBenchmark:
 		## OPERATION
 		if self.params["operation"] == "write":
 			run_options += " -w "
-			## Delete previous run data before running write if 'deletefiles' is true
-			if self.deletefiles:
-				print("Cleaning up datapath from previous runs...")
-				deletefiles_cmd = f"rm -rf {data_path}/*"
-				deletefiles_process = subprocess.run(["bash", "-c", deletefiles_cmd])
 		elif self.params["operation"] == "read":
 			run_options += " -r "
 
@@ -106,6 +101,14 @@ class IORBenchmark:
 		            # equivalent to awk - split on whitespace and grab columns
 		            cols = line.split()
 		            print(f"       {cols[0]} {cols[1]} {cols[2]} {cols[3]}")
+
+
+		self.params["operation"] == "read":
+			## Delete previous run data before running write if 'deletefiles' is true
+			if self.deletefiles:
+				print("Cleaning up datapath from previous runs...")
+				deletefiles_cmd = f"rm -rf {data_path}/*"
+				deletefiles_process = subprocess.run(["bash", "-c", deletefiles_cmd])
 
 
 	def stop(self):
