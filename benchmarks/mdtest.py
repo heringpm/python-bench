@@ -27,6 +27,9 @@ class MDTestBenchmark:
 				hosts_var = f"--machinefile {self.machinefile}"
 			elif line_count > self.params["clients"]:
 				hosts_var = f"--host {host_string}"
+			elif line_count < self.params["clients"]:
+				print("not enough clients in machinefile to satisfy client count request!")
+				exit()
 
 		total_ppn = self.params["ppn"] * self.params["clients"]
 		cmd = f"{self.mpirun_path} {hosts_var} {self.mpi_conf} --np {total_ppn} {self.mdtest_path} "
