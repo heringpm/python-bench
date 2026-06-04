@@ -64,8 +64,20 @@ class IORBenchmark:
 				raise ValueError("ERROR - Not enough clients in machinefile to satisfy client count request!")
 
 
-		data_path = Path(f"{self.data_path_root}/ior")
-		data_path.mkdir(parents=True, exist_ok=True)
+		## DATA POOLS
+		if self.params["pool"] != "default":
+			data_path = Path(f"{self.data_path_root}/ior/{pool}")
+			data_path.mkdir(parents=True, exist_ok=True)
+			pool_stripe_cmd = f"lfs setstripe -p {pool} {data_path}"
+
+			set_stripe_process = subprocess.run(["bash", "-c", pool_stripe_cmd])
+
+		else:
+			data_path = Path(f"{self.data_path_root}/ior")
+			data_path.mkdir(parents=True, exist_ok=True)
+
+		
+		
 
 		with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log", "w") as log_file:
 

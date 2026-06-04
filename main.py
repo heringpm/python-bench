@@ -81,10 +81,11 @@ def setup_logging(log_path, tool):
 	stamp = now.strftime("%Y%m%d_%H%M")
 	runid_base = f"{runid}_{stamp}"
 	time.sleep(5)
-
-	### Create directories for logs
+		
 	path = Path(f"{log_path}/{tool}/{runid_base}")
 	path.mkdir(parents=True, exist_ok=True)
+
+	
 
 
 def _generate_combos(params: dict) -> list:
@@ -99,7 +100,7 @@ def generate_tool_tests(params: dict, tool) -> dict:
 	if tool == "ior":
 		for cfg in _generate_combos(params):
 			name = (
-				f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize."
+				f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pool']}-pool.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize."
 				f"{cfg['directio']}-directio.{cfg['fileperproc']}-fileperproc.{cfg['randomoffset']}-random."
 				f"{cfg['api']}-api.{cfg['checksums']}-checksums.{cfg['operation']}"
 			)
@@ -107,7 +108,7 @@ def generate_tool_tests(params: dict, tool) -> dict:
 	elif tool == "mdtest":
 		for cfg in _generate_combos(params):
 			name = (
-				f"mdtest.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['objects']}-objects.{cfg['branching']}."
+				f"mdtest.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pool']}-pool.{cfg['objects']}-objects.{cfg['branching']}."
 				f"{cfg['depth']}-depth.{cfg['uniquedir']}-uniquedir.{cfg['itemsperdir']}-itemsperdir.{cfg['directio']}-directio"
 			)
 			tests[name] = cfg
@@ -147,10 +148,10 @@ def main() -> None:
 
 	# Setup the logging root path
 	for tool, tool_path in tools.items():
-		setup_logging(log_path, tool)
-
 		tool_tests = config_data[0]["tests"][tool]
 		all_tool_tests = generate_tool_tests(tool_tests, tool)
+
+		setup_logging(log_path, tool)
 
 		### Setup some progress messaging
 		total = len(all_tool_tests)
