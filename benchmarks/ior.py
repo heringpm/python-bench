@@ -16,7 +16,7 @@ class IORBenchmark:
 		self.runid_base = runid_base
 		self.fname = fname
 		self.machinefile = machinefile
-		
+
 
 	def start(self):
 
@@ -48,6 +48,18 @@ class IORBenchmark:
 		if self.params["randomoffset"] == 1:
 			run_options += " -z "
 
+		## CLIENTS TO USE
+		with open(self.machinefile, "r") as f:
+			line_count = sum(1 for line in f)
+			hosts = [line.strip() for line in f,readlines()[:{self.params["clients"]}]]
+			host_string = ",".join(hosts)
+
+			if line_count == self.params["clients"]:
+				hosts_var = f"--machinefile {self.machinefile}"
+			elif line_count > self.params["clients"]:
+				hosts_var = f"--host {host_string}"
+
+
 
 
 		data_path = Path(f"{self.data_path_root}/ior")
@@ -56,7 +68,7 @@ class IORBenchmark:
 		with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log", "w") as log_file:
 
 			cmd = (
-				f'{self.mpirun_path} --machinefile {self.machinefile} '
+				f'{self.mpirun_path} {hosts_var} '
 				f'{self.mpi_conf} --np {total_ppn} '
 				f'{self.ior_path} -a {self.params["api"]} -v -d 1 '
 				f'-b {self.params["blocksize"]} -t {self.params["xfersize"]} '

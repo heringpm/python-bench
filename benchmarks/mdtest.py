@@ -16,8 +16,19 @@ class MDTestBenchmark:
 
 	def _cmd_builder(self) -> str:
 
+		## CLIENTS TO USE
+		with open(self.machinefile, "r") as f:
+			line_count = sum(1 for line in f)
+			hosts = [line.strip() for line in f,readlines()[:{self.params["clients"]}]]
+			host_string = ",".join(hosts)
+
+			if line_count == self.params["clients"]:
+				hosts_var = f"--machinefile {self.machinefile}"
+			elif line_count > self.params["clients"]:
+				hosts_var = f"--host {host_string}"
+
 		total_ppn = self.params["ppn"] * self.params["clients"]
-		cmd = f"{self.mpirun_path} --machinefile {self.machinefile} {self.mpi_conf} --np {total_ppn} {self.mdtest_path} "
+		cmd = f"{self.mpirun_path} {hosts_var} {self.mpi_conf} --np {total_ppn} {self.mdtest_path} "
 
 		### check for flags to add
 		if self.params.get("objects"): cmd += f' -n {self.params["objects"]}'
@@ -40,6 +51,7 @@ class MDTestBenchmark:
 		if self.params.get("extra_args"): cmd += f' {self.params["extra_args"]}'
 
 
+
 		return cmd
 
 	def start(self):
@@ -53,12 +65,13 @@ class MDTestBenchmark:
 
 		with open(f"{self.log_path}/mdtest/{self.runid_base}/{self.fname}.mdtest.log", "w") as log_file:
 
-			process = subprocess.run(
-			    ["bash", "-c", cmd],
-			    stdin=subprocess.DEVNULL,
-			    stdout=log_file,
-			    stderr=log_file
-			)
+			print(cmd)
+			#process = subprocess.run(
+			#    ["bash", "-c", cmd],
+			#    stdin=subprocess.DEVNULL,
+			#    stdout=log_file,
+			#    stderr=log_file
+			#)
 
 
 	def stop(self):
