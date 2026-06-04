@@ -6,6 +6,8 @@ import json
 import os
 import re
 import subprocess
+import argparse
+import time
 from pathlib import Path
 from typing import Any, Union
 from monitoring import SFAMonitoring
@@ -13,9 +15,9 @@ from benchmarks.ior import IORBenchmark
 from benchmarks.mdtest import MDTestBenchmark
 from datetime import datetime
 from itertools import product
-import time
 
 
+### Global vars
 
 config_file = Path("./config.json")
 fstrim_script = Path("/work/scripts/benchmark_script/fstrim_lustredevs_parallel.sh")
@@ -32,6 +34,18 @@ runid_base = None
 data_path_root = None
 machinefile = None
 mpi_conf = None
+
+
+
+def read_arguments():
+	parser = argparse.ArgumentParser(description="Storage Benchmarking Suite")
+	parser.add_argument("--fstrim", help="Run fstrim on filesystem before tests")
+	parser.add_argument("--drop-client-cache", help="Drop cache on clients before tests")
+	parser.add_argument("--drop-server-cache", help="Drop cache on servers before tests")
+
+	args = parser.parse_args()
+
+	return args
 
 
 def load_config_file(path: Union[str, Path]):
@@ -99,7 +113,7 @@ def generate_tool_tests(params: dict, tool) -> dict:
 			tests[name] = cfg
 	return tests
 
-def test_prep():
+def test_prep(args):
 	### This will run fstrim and drop all client and server caches
 	all_vms = ",".join(appliances.values())
 	first_vm = list(appliances.values())[0]  # "sv30[0-3]"
@@ -108,19 +122,26 @@ def test_prep():
 		first_vm = f"{match.group(1)}{match.group(2)}"
 	
 
+
 	fstrim_cmd = f"ssh {first_vm} 'clush -ab {fstrim_script}'"
 	client_cache_cmd = f"clush --machinefile {machinefile} 'echo 3 > /proc/sys/vm/drop_caches'"
 	server_cache_cmd = f"clush -w {all_vms} 'echo 3 > /proc/sys/vm/drop_caches'"
 
-	print("Running fstrim...")
-	process = subprocess.run(["bash", "-c", fstrim_cmd])
-	print("Dropping cache on servers...")
-	process = subprocess.run(["bash", "-c", server_cache_cmd])
-	print("Dropping cache on clients...")
-	process = subprocess.run(["bash", "-c", client_cache_cmd])
+	if args.get("fstrim"): 
+		print("Running fstrim...")
+		process = subprocess.run(["bash", "-c", fstrim_cmd])
+	if args.get("drop-client-cache"):
+		print("Dropping cache on servers...")
+		process = subprocess.run(["bash", "-c", server_cache_cmd])
+	if args.get("drop-server-cache"):	
+		print("Dropping cache on clients...")
+		process = subprocess.run(["bash", "-c", client_cache_cmd])
 
 	
 def main() -> None:
+
+	read_arguments()
+
 	config_data = load_config_file(config_file)
 	setup_vars(config_data)
 
@@ -153,7 +174,7 @@ def main() -> None:
 				)
 				monitoring.start()
 				### PREP FILESYSTEM FOR TEST
-				test_prep()
+				test_prep(args)
 
 				### RUN BENCHMARKING HERE
 				if tool == "ior":
