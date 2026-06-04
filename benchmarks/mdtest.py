@@ -52,7 +52,7 @@ class MDTestBenchmark:
 
 	def start(self):
 		
-		cmd = _cmd_builder()
+		cmd = self._cmd_builder()
 		
 		data_path = Path(f"{self.data_path_root}/mdtest")
 		data_path.mkdir(parents=True, exist_ok=True)
