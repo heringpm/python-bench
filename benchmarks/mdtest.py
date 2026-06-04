@@ -1,5 +1,6 @@
 import time
 from pathlib import Path
+import subprocess
 
 class MDTestBenchmark:
 	def __init__(self, params, mpirun_path, mpi_conf, mdtest_path, data_path_root, log_path, runid_base, fname, machinefile):
