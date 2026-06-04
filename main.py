@@ -40,8 +40,8 @@ mpi_conf = None
 def read_arguments():
 	parser = argparse.ArgumentParser(description="Storage Benchmarking Suite")
 	parser.add_argument("--fstrim", help="Run fstrim on filesystem before tests")
-	parser.add_argument("--drop-client-cache", help="Drop cache on clients before tests")
-	parser.add_argument("--drop-server-cache", help="Drop cache on servers before tests")
+	parser.add_argument("--dropclientcache", help="Drop cache on clients before tests")
+	parser.add_argument("--dropservercache", help="Drop cache on servers before tests")
 
 	args = parser.parse_args()
 
@@ -130,10 +130,10 @@ def test_prep(args):
 	if args.fstrim: 
 		print("Running fstrim...")
 		process = subprocess.run(["bash", "-c", fstrim_cmd])
-	if args.drop-client-cache:
+	if args.dropclientcache:
 		print("Dropping cache on servers...")
 		process = subprocess.run(["bash", "-c", server_cache_cmd])
-	if args.drop-server-cache:	
+	if args.dropservercache:	
 		print("Dropping cache on clients...")
 		process = subprocess.run(["bash", "-c", client_cache_cmd])
 
