@@ -14,7 +14,7 @@
     },
     "tests": {
       "mdtest": {
-        "clients":        [8],
+        "clients":        [16],
         "ppn":            [64],
         "objects":        ["4000"],
         "branching":      ["1"],
