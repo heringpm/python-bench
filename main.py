@@ -100,7 +100,7 @@ def generate_tool_tests(params: dict, tool) -> dict:
 	if tool == "ior":
 		for cfg in _generate_combos(params):
 			name = (
-				f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pool']}-pool.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize."
+				f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize."
 				f"{cfg['directio']}-directio.{cfg['fileperproc']}-fileperproc.{cfg['randomoffset']}-random."
 				f"{cfg['api']}-api.{cfg['checksums']}-checksums.{cfg['operation']}"
 			)
@@ -108,7 +108,7 @@ def generate_tool_tests(params: dict, tool) -> dict:
 	elif tool == "mdtest":
 		for cfg in _generate_combos(params):
 			name = (
-				f"mdtest.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pool']}-pool.{cfg['objects']}-objects.{cfg['branching']}."
+				f"mdtest.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['objects']}-objects.{cfg['branching']}."
 				f"{cfg['depth']}-depth.{cfg['uniquedir']}-uniquedir.{cfg['itemsperdir']}-itemsperdir.{cfg['directio']}-directio"
 			)
 			tests[name] = cfg
