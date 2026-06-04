@@ -19,7 +19,7 @@ class MDTestBenchmark:
 		## CLIENTS TO USE
 		with open(self.machinefile, "r") as f:
 			line_count = sum(1 for line in f)
-			hosts = [line.strip() for line in f,readlines()[:{self.params["clients"]}]]
+			hosts = [line.strip() for line in f.readlines()[:{self.params["clients"]}]]
 			host_string = ",".join(hosts)
 
 			if line_count == self.params["clients"]:

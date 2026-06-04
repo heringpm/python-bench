@@ -51,13 +51,16 @@ class IORBenchmark:
 		## CLIENTS TO USE
 		with open(self.machinefile, "r") as f:
 			line_count = sum(1 for line in f)
-			hosts = [line.strip() for line in f,readlines()[:{self.params["clients"]}]]
+			hosts = [line.strip() for line in f.readlines()[:{self.params["clients"]}]]
 			host_string = ",".join(hosts)
 
 			if line_count == self.params["clients"]:
 				hosts_var = f"--machinefile {self.machinefile}"
 			elif line_count > self.params["clients"]:
 				hosts_var = f"--host {host_string}"
+			elif line_count < self.params["clients"]:
+				print("not enough clients in machinefile to satisfy client count request!")
+				exit()
 
 
 
