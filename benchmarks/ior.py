@@ -103,7 +103,7 @@ class IORBenchmark:
 		            print(f"       {cols[0]} {cols[1]} {cols[2]} {cols[3]}")
 
 
-		self.params["operation"] == "read":
+		if self.params["operation"] == "read":
 			## Delete previous run data before running write if 'deletefiles' is true
 			if self.deletefiles:
 				print("Cleaning up datapath from previous runs...")
