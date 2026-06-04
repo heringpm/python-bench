@@ -19,7 +19,7 @@ class MDTestBenchmark:
 		## CLIENTS TO USE
 		with open(self.machinefile, "r") as f:
 			lines = f.readlines()
-    		line_count = len(lines)
+			line_count = len(lines)
 			client_count = int(self.params["clients"])
 			print(f"machinefile = {lines}")
 			print(f"client count = {client_count}")
