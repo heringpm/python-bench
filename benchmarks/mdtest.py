@@ -20,10 +20,12 @@ class MDTestBenchmark:
 		with open(self.machinefile, "r") as f:
 			line_count = sum(1 for line in f)
 			client_count = int(self.params["clients"])
+			print(f"machinefile = {f}")
+			print(f"client count = {client_count}")
 			hosts = [line.strip() for line in f.readlines()[:client_count]]
 			host_string = ",".join(hosts)
 
-			print(host_string)
+			print(f"host string = {host_string}")
 
 			if line_count == self.params["clients"]:
 				hosts_var = f"--machinefile {self.machinefile}"
