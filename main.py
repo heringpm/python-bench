@@ -109,8 +109,8 @@ def test_prep():
 	
 
 	fstrim_cmd = f"ssh {first_vm} 'clush -ab {fstrim_script}'"
-	server_cache_cmd = f"clush --machinefile {machinefile} 'echo 3 > /proc/sys/vm/drop_caches'"
-	client_cache_cmd = f"clush -w {all_vms} 'echo 3 > /proc/sys/vm/drop_caches'"
+	client_cache_cmd = f"clush --machinefile {machinefile} 'echo 3 > /proc/sys/vm/drop_caches'"
+	server_cache_cmd = f"clush -w {all_vms} 'echo 3 > /proc/sys/vm/drop_caches'"
 
 	print("Running fstrim...")
 	process = subprocess.run(["bash", "-c", fstrim_cmd])
@@ -170,7 +170,16 @@ def main() -> None:
 					)
 					ior.start()
 				elif tool == "mdtest":
-					mdtest = MDTestBenchmark(config=config_data)
+					mdtest = MDTestBenchmark(params=params,
+						mpirun_path=mpirun_path,
+						mpi_conf=mpi_conf,
+						mdtest_path=tool_path,
+						data_path_root=data_path_root,
+						log_path=log_path,
+						runid_base=runid_base,
+						fname=f"{runid}_{file_stamp}_{test}_mdtest.log",
+						machinefile=machinefile
+					)
 					mdtest.start()
 
 				completed += 1
