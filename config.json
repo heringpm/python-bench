@@ -6,7 +6,6 @@
     "mpi_conf": "-x UCX_LOG_LEVEL=error -x UCX_NET_DEVICES=mlx5_0:1 --map-by node --bind-to core:overload-allowed --use-hwthread-cpus --oversubscribe --allow-run-as-root",
     "log_path": "/work/home/phering/logging_bench_test",
     "tools": {
-      "ior": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/ior",
       "mdtest": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/mdtest"
     },
     "appliances": {
@@ -14,7 +13,6 @@
       "400x3e03": "sv33[0-3]"
     },
     "tests": {
-      "ior1": {},
       "mdtest": {
         "clients":        [16],
         "ppn":            [64],
