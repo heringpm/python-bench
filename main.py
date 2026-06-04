@@ -42,6 +42,7 @@ def read_arguments():
 	parser.add_argument("--fstrim", action="store_true", help="Run fstrim on filesystem before tests")
 	parser.add_argument("--dropclientcache", action="store_true", help="Drop cache on clients before tests")
 	parser.add_argument("--dropservercache", action="store_true", help="Drop cache on servers before tests")
+	parser.add_argument("--deletebeforewrite", action="store_true", help="Delete old files before writing new test files")
 
 	args = parser.parse_args()
 
@@ -188,7 +189,8 @@ def main() -> None:
 						log_path=log_path,
 						runid_base=runid_base,
 						fname=f"{runid}_{file_stamp}_{test}_ior.log",
-						machinefile=machinefile
+						machinefile=machinefile,
+						deletefiles=args.deletebeforewrite
 					)
 					ior.start()
 				elif tool == "mdtest":

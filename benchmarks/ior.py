@@ -6,7 +6,7 @@ from itertools import product
 from pathlib import Path
 
 class IORBenchmark:
-	def __init__(self, params, mpirun_path, mpi_conf, ior_path, data_path_root, log_path, runid_base, fname, machinefile):
+	def __init__(self, params, mpirun_path, mpi_conf, ior_path, data_path_root, log_path, runid_base, fname, machinefile, deletefiles):
 		self.params = params
 		self.mpirun_path = mpirun_path
 		self.mpi_conf = mpi_conf
@@ -16,6 +16,7 @@ class IORBenchmark:
 		self.runid_base = runid_base
 		self.fname = fname
 		self.machinefile = machinefile
+		self.deletefiles = deletefiles
 
 
 	def start(self):
@@ -25,10 +26,27 @@ class IORBenchmark:
 
 		total_ppn = self.params["ppn"] * self.params["clients"]
 
+		## DATA POOLS
+		if self.params["pools"] != "default":
+			data_path = Path(f"{self.data_path_root}/ior/{self.params['pools']}")
+			data_path.mkdir(parents=True, exist_ok=True)
+			pool_stripe_cmd = f"lfs setstripe -p {self.params['pools']} {data_path}"
+
+			set_stripe_process = subprocess.run(["bash", "-c", pool_stripe_cmd])
+
+		else:
+			data_path = Path(f"{self.data_path_root}/ior")
+			data_path.mkdir(parents=True, exist_ok=True)
+
 		run_options = ""
 		## OPERATION
 		if self.params["operation"] == "write":
 			run_options += " -w "
+			## Delete previous run data before running write if 'deletefiles' is true
+			if self.deletefiles:
+				print("Cleaning up datapath from previous runs...")
+				deletefiles_cmd = f"rm -rf {data_path}/*"
+				deletefiles_process = subprocess.run(["bash", "-c", pool_stripe_cmd])
 		elif self.params["operation"] == "read":
 			run_options += " -r "
 
@@ -62,22 +80,6 @@ class IORBenchmark:
 				hosts_var = f"--host {host_string}"
 			elif line_count < self.params["clients"]:
 				raise ValueError("ERROR - Not enough clients in machinefile to satisfy client count request!")
-
-
-		## DATA POOLS
-		if self.params["pools"] != "default":
-			data_path = Path(f"{self.data_path_root}/ior/{self.params['pools']}")
-			data_path.mkdir(parents=True, exist_ok=True)
-			pool_stripe_cmd = f"lfs setstripe -p {self.params['pools']} {data_path}"
-
-			set_stripe_process = subprocess.run(["bash", "-c", pool_stripe_cmd])
-
-		else:
-			data_path = Path(f"{self.data_path_root}/ior")
-			data_path.mkdir(parents=True, exist_ok=True)
-
-		
-		
 
 		with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log", "w") as log_file:
 
