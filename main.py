@@ -94,10 +94,7 @@ def generate_tool_tests(params: dict, tool) -> dict:
 		for cfg in _generate_combos(params):
 			name = (
 				f"mdtest.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['objects']}-objects.{cfg['branching']}."
-				f"{cfg['depth']}-depth.{cfg['bytesread']}-bytesread.{cfg['byteswrite']}-byteswrite.{cfg['iterations']}-iterations."
-				f"{cfg['itemsperdir']}-itemsperdir.{cfg['directio']}-directio.{cfg['onlycreate']}-onlycreate.{cfg['onlystat']}-onlystat."
-				f"{cfg['onlyread']}-onlyread.{cfg['onlyremove']}-onlyremove.{cfg['dironly']}-dironly.{cfg['fileonly']}-fileonly."
-				f"{cfg['uniquedir']}-uniquedir.{cfg['syncafterwrite']}-syncafterwrite"
+				f"{cfg['depth']}-depth.{cfg['uniquedir']}-uniquedir.{cfg['itemsperdir']}-itemsperdir.{cfg['directio']}-directio"
 			)
 			tests[name] = cfg
 	return tests
