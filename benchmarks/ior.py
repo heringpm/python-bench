@@ -50,9 +50,10 @@ class IORBenchmark:
 
 		## CLIENTS TO USE
 		with open(self.machinefile, "r") as f:
-			line_count = sum(1 for line in f)
+			lines = f.readlines()
+			line_count = len(lines)
 			client_count = int(self.params["clients"])
-			hosts = [line.strip() for line in f.readlines()[:client_count]]
+			hosts = [line.strip() for line in lines[:client_count]]
 			host_string = ",".join(hosts)
 
 			if line_count == self.params["clients"]:
