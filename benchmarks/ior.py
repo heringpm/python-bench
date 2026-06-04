@@ -51,7 +51,7 @@ class IORBenchmark:
 		## CLIENTS TO USE
 		with open(self.machinefile, "r") as f:
 			line_count = sum(1 for line in f)
-			client_conut = self.params["clients"]
+			client_conut = int(self.params["clients"])
 			hosts = [line.strip() for line in f.readlines()[:{client_conut}]]
 			host_string = ",".join(hosts)
 
