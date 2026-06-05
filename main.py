@@ -247,8 +247,10 @@ def main() -> None:
 			print(f"  Status:     {'✓ COMPLETED' if not interrupted else '✗ INTERRUPTED'}")
 			print(f"{'='*60}\n")
 
+			monitoring.stop()
 
-		monitoring.stop()
+
+		
 
 if __name__ == "__main__":
 	main()
