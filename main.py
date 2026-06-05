@@ -44,6 +44,7 @@ def read_arguments():
 	parser.add_argument("--dropclientcache", action="store_true", help="Drop cache on clients before tests")
 	parser.add_argument("--dropservercache", action="store_true", help="Drop cache on servers before tests")
 	parser.add_argument("--deletebeforewrite", action="store_true", help="Delete old files before writing new test files")
+	parser.add_argument("--noclienttune", action="store_true", help="Dont run any client tuning")
 
 	args = parser.parse_args()
 
@@ -200,7 +201,8 @@ def main() -> None:
 				test_prep(args)
 
 				### CLIENT TUNINGS
-				tune_clients(params)
+				if args.noclienttune == False:
+					tune_clients(params)
 
 				### RUN BENCHMARKING HERE
 				if tool == "ior":
