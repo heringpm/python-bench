@@ -134,7 +134,7 @@ def test_prep(args):
 
 	if args.fstrim: 
 		print("Running fstrim...")
-		process = subprocess.run(["bash", "-c", fstrim_cmd])
+		process = subprocess.run(["bash", "-c", fstrim_cmd], stdout=subprocess.DEVNULL, stderr=None)
 	if args.drop_client_cache:
 		print("Dropping cache on servers...")
 		process = subprocess.run(["bash", "-c", server_cache_cmd])
@@ -246,6 +246,7 @@ def main() -> None:
 			print(f"  Not run:    {total - completed}")
 			print(f"  Status:     {'✓ COMPLETED' if not interrupted else '✗ INTERRUPTED'}")
 			print(f"{'='*60}\n")
+
 
 			monitoring.stop()
 
