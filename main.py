@@ -152,7 +152,13 @@ def tune_clients(params):
 	### Add machinefile to tune command
 	tune_cmd += f" {machinefile}"
 	### Run tunning command
-	process = subprocess.run(["bash", "-c", tune_cmd]) 
+	print("Running client tuning scripts...")
+	process = subprocess.run(
+		["bash", "-c", tune_cmd],
+		stdin=subprocess.DEVNULL,
+		stdout=subprocess.DEVNULL,
+		stderr=None
+	) 
 
 
 def main() -> None:
