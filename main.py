@@ -41,10 +41,10 @@ tuning_files = None
 def read_arguments():
 	parser = argparse.ArgumentParser(description="Storage Benchmarking Suite")
 	parser.add_argument("--fstrim", action="store_true", help="Run fstrim on filesystem before tests")
-	parser.add_argument("--dropclientcache", action="store_true", help="Drop cache on clients before tests")
-	parser.add_argument("--dropservercache", action="store_true", help="Drop cache on servers before tests")
-	parser.add_argument("--deletebeforewrite", action="store_true", help="Delete old files before writing new test files")
-	parser.add_argument("--noclienttune", action="store_true", help="Dont run any client tuning")
+	parser.add_argument("--drop-client-cache", action="store_true", help="Drop cache on clients before tests")
+	parser.add_argument("--drop-server-cache", action="store_true", help="Drop cache on servers before tests")
+	parser.add_argument("--delete-before-write", action="store_true", help="Delete old files before writing new test files")
+	parser.add_argument("--no-client-tune", action="store_true", help="Dont run any client tuning")
 
 	args = parser.parse_args()
 
@@ -135,10 +135,10 @@ def test_prep(args):
 	if args.fstrim: 
 		print("Running fstrim...")
 		process = subprocess.run(["bash", "-c", fstrim_cmd])
-	if args.dropclientcache:
+	if args.drop_client_cache:
 		print("Dropping cache on servers...")
 		process = subprocess.run(["bash", "-c", server_cache_cmd])
-	if args.dropservercache:	
+	if args.drop_server_cache:	
 		print("Dropping cache on clients...")
 		process = subprocess.run(["bash", "-c", client_cache_cmd])
 
@@ -201,7 +201,7 @@ def main() -> None:
 				test_prep(args)
 
 				### CLIENT TUNINGS
-				if args.noclienttune == False:
+				if args.no_client_tune == False:
 					tune_clients(params)
 
 				### RUN BENCHMARKING HERE
@@ -216,7 +216,7 @@ def main() -> None:
 						runid_base=runid_base,
 						fname=f"{runid}_{file_stamp}_{test}_ior.log",
 						machinefile=machinefile,
-						deletefiles=args.deletebeforewrite
+						deletefiles=args.delete_before_write
 					)
 					ior.start()
 				elif tool == "mdtest":
