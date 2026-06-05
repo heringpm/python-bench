@@ -65,6 +65,7 @@ def load_config_file(path: Union[str, Path]):
 
 def setup_vars(config_data):
 	global data_path_root, mpirun_path, tools, log_path, appliances, machinefile, mpi_conf, tuning_files
+	data_path_root = config_data[0]["data_path_root"]
 	mpirun_path = config_data[0]["mpirun_path"]
 	mpi_conf = config_data[0]["mpi_conf"]
 	log_path = config_data[0]["log_path"]
