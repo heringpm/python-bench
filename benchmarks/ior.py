@@ -22,7 +22,7 @@ class IORBenchmark:
 	def start(self):
 
 
-		### build out needed params
+		### Build out needed params
 
 		total_ppn = self.params["ppn"] * self.params["clients"]
 
