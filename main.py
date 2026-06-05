@@ -34,6 +34,7 @@ runid_base = None
 data_path_root = None
 machinefile = None
 mpi_conf = None
+tuning_files = None
 
 
 
@@ -63,14 +64,14 @@ def load_config_file(path: Union[str, Path]):
 
 
 def setup_vars(config_data):
-	global data_path_root, mpirun_path, tools, log_path, appliances, machinefile, mpi_conf
-	data_path_root = config_data[0]["data_path_root"]
+	global data_path_root, mpirun_path, tools, log_path, appliances, machinefile, mpi_conf, tuning_files
 	mpirun_path = config_data[0]["mpirun_path"]
 	mpi_conf = config_data[0]["mpi_conf"]
 	log_path = config_data[0]["log_path"]
 	tools = config_data[0]["tools"]
 	appliances = config_data[0]["appliances"]
 	machinefile = config_data[0]["machine_file"]
+	tuning_files = config_data[0]["tuning_files"]
 
 def setup_logging(log_path, tool):
 
@@ -140,6 +141,19 @@ def test_prep(args):
 		process = subprocess.run(["bash", "-c", client_cache_cmd])
 
 	
+def tune_clients(params):
+	checksums = params["checksums"]
+	if checksums == "off":
+		tune_cmd = tuning_files["tune_no_checksums"]
+	if checksums == "on":
+		tune_cmd = tuning_files["tune_checksums"]
+
+	### Add machinefile to tune command
+	tune_cmd += f" {machinefile}"
+	### Run tunning command
+	process = subprocess.run(["bash", "-c", tune_cmd]) 
+
+
 def main() -> None:
 
 	args = read_arguments()
@@ -177,6 +191,9 @@ def main() -> None:
 				monitoring.start()
 				### PREP FILESYSTEM FOR TEST
 				test_prep(args)
+
+				### CLIENT TUNINGS
+				tune_clients(params)
 
 				### RUN BENCHMARKING HERE
 				if tool == "ior":

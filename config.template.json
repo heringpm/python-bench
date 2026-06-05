@@ -2,6 +2,10 @@
   {
     "data_path_root": "/edf",
     "machine_file": "./machinefile.16",
+    "tuning_files": {
+      "tune_checksums": "./tune_checksums.sh",
+      "tune_no_checksums": "./tune_no_checksums.sh"
+    },
     "mpirun_path": "/work/bin/benchmark_bin/openmpi-5.0.10b/bin/mpirun",
     "mpi_conf": "-x UCX_LOG_LEVEL=error -x UCX_NET_DEVICES=mlx5_0:1 --map-by node --bind-to core:overload-allowed --use-hwthread-cpus --oversubscribe --allow-run-as-root",
     "log_path": "/work/home/phering/logging_bench_test",
@@ -23,11 +27,11 @@
         "blocksize":      ["10g"],
         "xfersize":       ["1m", "16m"],
         "directio":       [1],
-        "operation":      ["write", "read"],
         "randomoffset":   [0],
         "fileperproc":    [1],
         "keep_files":     [1],
-        "extra_args":     ["-e"]
+        "extra_args":     ["-e"],
+        "operation":      ["write", "read"]
       },
       "mdtest": {
         "pools":          ["default"],
