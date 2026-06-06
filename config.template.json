@@ -20,6 +20,7 @@
     "tests": {
       "ior": {
         "pools":          ["ddn_hdd", "ddn_nvme"],
+        "stripecount":    [1,4],
         "clients":        [1,2,4,8,16],
         "ppn":            [64],
         "api":            ["posix"],
@@ -35,6 +36,7 @@
       },
       "mdtest": {
         "pools":          ["default"],
+        "stripecount":    [1,4],
         "clients":        [16],
         "ppn":            [64],
         "objects":        ["4000"],
