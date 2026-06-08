@@ -76,7 +76,7 @@ class IORBenchmark:
 			elif line_count < self.params["clients"]:
 				raise ValueError("ERROR - Not enough clients in machinefile to satisfy client count request!")
 
-		with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log", "w") as log_file:
+		with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}", "w") as log_file:
 
 			cmd = (
 				f'{self.mpirun_path} {hosts_var} '

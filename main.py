@@ -104,7 +104,7 @@ def generate_tool_tests(params: dict, tool) -> dict:
 	if tool == "ior":
 		for cfg in _generate_combos(params):
 			name = (
-				f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripe_count']}-stripecount.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize."
+				f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripecount']}-stripecount.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize."
 				f"{cfg['directio']}-directio.{cfg['fileperproc']}-fileperproc.{cfg['randomoffset']}-random."
 				f"{cfg['api']}-api.{cfg['checksums']}-checksums.{cfg['operation']}"
 			)

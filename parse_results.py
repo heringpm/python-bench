@@ -52,9 +52,8 @@ FILENAME_PARAM_COLUMNS = [
 
 def parse_test_name(filename: str) -> dict:
     """Break a log filename into its component parameters."""
-    stem = Path(filename).stem
-    if stem.endswith(".ior"):
-        stem = stem[:-4]
+    stem = Path(filename).stem          # strip .log
+    stem = stem[stem.index("ior."):]    # strip runid_datestamp_ prefix
     parts = stem.split(".")
 
     params = {}
