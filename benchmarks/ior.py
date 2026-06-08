@@ -31,8 +31,12 @@ class IORBenchmark:
 			data_path = Path(f"{self.data_path_root}/ior/{self.params['pools']}")
 			data_path.mkdir(parents=True, exist_ok=True)
 			pool_stripe_cmd = f"lfs setstripe -p {self.params['pools']} -c {self.params['stripecount']} {data_path}"
+			pool_overstripe_cmd = f"lfs setstripe -p {self.params['pools']} -C {self.params['stripecount']} {data_path}"
 
 			set_stripe_process = subprocess.run(["bash", "-c", pool_stripe_cmd])
+
+			if set_stripe_process.returncode != 0:
+				set_overstripe_process = subprocess.run(["bash", "-c", pool_stripe_cmd])
 
 		else:
 			data_path = Path(f"{self.data_path_root}/ior")
