@@ -178,7 +178,7 @@ def generate_ior_report(run_dir: Path, config: dict) -> None:
     extra_config_params = [
         k for k in config_params
         if k not in log_captured
-        and k not in ("keep_files", "extra_args", "pools", "stripe_count")
+        and k not in ("keep_files", "extra_args", "pools", "stripe_count", "stripecount")
     ]
 
     all_columns = (
