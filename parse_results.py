@@ -56,6 +56,7 @@ def parse_test_name(filename: str) -> dict:
     """Break a log filename into its component parameters."""
     stem = Path(filename).stem          # strip .log
     stem = stem[stem.index("ior."):]    # strip runid_datestamp_ prefix
+    stem = stem.replace("_ior", "")     # strip trailing _ior from operation
     parts = stem.split(".")
 
     params = {}
