@@ -115,6 +115,13 @@ def generate_tool_tests(params: dict, tool) -> dict:
 				f"{cfg['branching']}-branching.{cfg['depth']}-depth.{cfg['uniquedir']}-uniquedir.{cfg['itemsperdir']}-itemsperdir.{cfg['directio']}-directio"
 			)
 			tests[name] = cfg
+	elif tool == "fio":
+		for cfg in _generate_combos(params):
+			name = (
+				f"fio.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripesize']}-stripesize.{cfg['stripe_count']}-stripecount.{cfg['blocksize']}-blocksize."
+				f"{cfg['filesize']}-filesize.{cfg['iodepth']}-iodepth.{cfg['directio']}-directio.{cfg['operation']}-operation"
+			)
+			tests[name] = cfg
 	return tests
 
 def test_prep(args):
@@ -230,6 +237,18 @@ def main() -> None:
 						machinefile=machinefile
 					)
 					mdtest.start()
+				elif tool == "fio":
+					fio = FIOBenchmark(
+						params=params,
+						fio_path=tool_path,
+						data_path_root=data_path_root,
+						log_path=log_path,
+						runid_base=runid_base,
+						fname=f"{runid}_{file_stamp}_{test}_fio.log",
+						machinefile=machinefile,
+						deletefiles=args.delete_before_write
+					)
+					fio.run()
 
 				completed += 1
 				print(f"  ✓  [{completed}/{total}] Done\n")
