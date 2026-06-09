@@ -15,6 +15,7 @@ class FIOBenchmark:
 		self.fname = fname
 		self.machinefile = machinefile
 		self.deletefiles = deletefiles
+		self.fio_job_path = Path("./benchmarks/fio_jobs")
 
 	def _start_fio_server(self):
 		start_server_cmd = f"clush --machinefile {self.machinefile} {self.fio_path} --server --daemonize=/tmp/fio.pid"
@@ -67,13 +68,28 @@ class FIOBenchmark:
 			with open(f"{self.log_path}/fio/{self.runid_base}/{self.fname}", "w") as log_file:
 
 				cmd = (
-					f'{self.mpirun_path} {hosts_var} '
-					f'{self.mpi_conf} --np {total_ppn} '
-					f'{self.ior_path} -a {self.params["api"]} -v -d 1 '
-					f'-b {self.params["blocksize"]} -t {self.params["xfersize"]} '
-					f'{run_options} {self.params["extra_args"]} -o {data_path}/f'
-
+					f'DIRECTIO={self.params["directio"]} IOENGINE={self.params["ioengine"]} '
+					f'READWRITE={self.params["operation"]} BLOCKSIZE={self.params["blocksize"]} '
+					f'IODEPTH={self.params["iodepth"]} FILESIZE={self.params["filesize"]} '
+					f'NUMJOBS={self.params["ppn"]} DIRECTORY={data_path} '
 				)
+
+				if self.params["operation"] in ("rw", "randrw"):
+					cmd += f' RWMIXREAD={self.params["rwmixread"]}'
+				elif self.params["operation"] == "write":
+					cmd += f' RWMIXREAD=0'
+				elif self.params["operation"] == "read":
+					cmd += f' RWMIXREAD=100'
+
+				if self.params["timebased"]:
+					job_file = f"{self.fio_job_path}/fio_timebased.job"
+					cmd += f'RUNTIME={self.params["runtime"]}s '
+
+				else :
+					job_file = f"{self.fio_job_path}/fio.job"
+
+				cmd += f' {self.fio_path} {hosts_var} {job_file}'
+				
 
 				process = subprocess.run(
 				    ["bash", "-c", cmd],

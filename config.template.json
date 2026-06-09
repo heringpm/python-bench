@@ -11,7 +11,8 @@
     "log_path": "/work/home/phering/logging_bench_test",
     "tools": {
       "ior": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/ior",
-      "mdtest": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/mdtest"
+      "mdtest": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/mdtest",
+      "fio": "/work/bin/benchmark_bin/fio-3.42/fio"
     },
     "appliances": {
       "400x3e01": "sv30[0-3]",
@@ -58,6 +59,22 @@
         "verbose":        ["-v"],
         "syncafterwrite": [0],
         "extra_args":     [""]
+      },
+      "fio": {
+        "pools":          ["ddn_hdd", "ddn_nvme"],
+        "stripecount":    [1,4],
+        "stripesize":     ["1m"],
+        "clients":        [1,2,4,8,16],
+        "ppn":            [64],
+        "ioengine":       ["libaio"],
+        "rwmixread":      [50],             // this is only used if the operation is "rw" or "randrw"
+        "iodepth":        [1],
+        "checksums":      ["off"],
+        "filesize":       ["10g"],
+        "blocksize":      ["1m", "16m"],
+        "directio":       [1],
+        "extra_args":     [""],
+        "operation":      ["write", "read"]
       }
     }
     
