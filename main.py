@@ -104,16 +104,15 @@ def generate_tool_tests(params: dict, tool) -> dict:
 	if tool == "ior":
 		for cfg in _generate_combos(params):
 			name = (
-				f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripecount']}-stripecount.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize."
-				f"{cfg['directio']}-directio.{cfg['fileperproc']}-fileperproc.{cfg['randomoffset']}-random."
-				f"{cfg['api']}-api.{cfg['checksums']}-checksums.{cfg['operation']}"
+				f"ior.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripesize']}-stripesize.{cfg['stripecount']}-stripecount.{cfg['blocksize']}-size.{cfg['xfersize']}-xfersize."
+				f"{cfg['directio']}-directio.{cfg['fileperproc']}-fileperproc.{cfg['randomoffset']}-random.{cfg['api']}-api.{cfg['checksums']}-checksums.{cfg['operation']}"
 			)
 			tests[name] = cfg
 	elif tool == "mdtest":
 		for cfg in _generate_combos(params):
 			name = (
-				f"mdtest.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripe_count']}-stripecount.{cfg['objects']}-objects.{cfg['branching']}."
-				f"{cfg['depth']}-depth.{cfg['uniquedir']}-uniquedir.{cfg['itemsperdir']}-itemsperdir.{cfg['directio']}-directio"
+				f"mdtest.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripesize']}-stripesize.{cfg['stripe_count']}-stripecount.{cfg['objects']}-objects."
+				f"{cfg['branching']}-branching.{cfg['depth']}-depth.{cfg['uniquedir']}-uniquedir.{cfg['itemsperdir']}-itemsperdir.{cfg['directio']}-directio"
 			)
 			tests[name] = cfg
 	return tests
