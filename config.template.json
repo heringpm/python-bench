@@ -72,6 +72,7 @@
         "checksums":      ["off"],
         "filesize":       ["10g"],
         "blocksize":      ["1m", "16m"],
+        "runtime":        [300],
         "directio":       [1],
         "extra_args":     [""],
         "operation":      ["write", "read"]
