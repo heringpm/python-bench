@@ -98,7 +98,7 @@ class IORBenchmark:
 			    stderr=log_file
 			)
 
-		with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.ior.log", "r") as f:
+		with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}", "r") as f:
 		    for line in f:
 		        # equivalent to grep
 		        if "Max Write" in line or "Max Read" in line:
