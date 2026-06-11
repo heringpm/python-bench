@@ -81,11 +81,6 @@ IOR_SUMMARY_COLUMNS = {
     "Min(OPs)":  "Min_IOPS",
     "Mean(OPs)": "Mean_IOPS",
     "Mean(s)":   "Mean_Latency(s)",
-    "#Tasks":    "Tasks",
-    "tPN":       "tPN",
-    "blksiz":    "BlockSize(B)",
-    "xsize":     "XferSize(B)",
-    "API":       "API",
 }
 
 METRIC_COLUMNS = list(IOR_SUMMARY_COLUMNS.values())

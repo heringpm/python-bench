@@ -38,7 +38,9 @@
       },
       "mdtest": {
         "pools":          ["default"],
+        "stripesize":     ["1m"],
         "stripecount":    [1,4],
+        "DOM":            [0],
         "clients":        [16],
         "ppn":            [64],
         "objects":        ["4000"],

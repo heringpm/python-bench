@@ -61,9 +61,24 @@ class MDTestBenchmark:
 	def start(self):
 		
 		cmd = self._cmd_builder()
-		
-		data_path = Path(f"{self.data_path_root}/mdtest")
-		data_path.mkdir(parents=True, exist_ok=True)
+		if self.params["pools"] != "default":
+			data_path = Path(f"{self.data_path_root}/mdtest")
+			data_path.mkdir(parents=True, exist_ok=True)
+			pool_stripe_cmd = f"lfs setstripe -p {self.params['pools']} -S {self.params['stripesize']} -c {self.params['stripecount']} {data_path}"
+			pool_overstripe_cmd = f"lfs setstripe -p {self.params['pools']} -S {self.params['stripesize']} -C {self.params['stripecount']} {data_path}"
+
+			set_stripe_process = subprocess.run(["bash", "-c", pool_stripe_cmd])
+
+			if set_stripe_process.returncode != 0:
+				set_overstripe_process = subprocess.run(["bash", "-c", pool_stripe_cmd])
+
+			if self.params['DOM']:
+				set_dom_cmd = f"lfs setstripe -E 1M -L mdt -p {self.params['pools']} {data_path}"
+				set_dom_process = subprocess.run(["bash", "-c", set_dom_cmd])
+		else:
+			if self.params['DOM']:
+				set_dom_cmd = f"lfs setstripe -E 1M -L mdt {data_path}"
+				set_dom_process = subprocess.run(["bash", "-c", set_dom_cmd])
 
 		cmd += f" -d {data_path}"
 
