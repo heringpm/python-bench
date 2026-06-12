@@ -1,11 +1,12 @@
 """
 parse_results.py
 ----------------
-Scrapes IOR log files from a run directory and outputs a CSV report
+Scrapes IOR/mdtest log files from a run directory and outputs a CSV report
 that can be imported directly into Excel.
 
 Usage:
-    python3 parse_results.py --tool ior --config /path/to/config.json --dir /work/results/ior/1748872000_20260602_1346
+    python3 parse_results.py --tool ior    --config /path/to/config.json --dir /work/results/ior/<runid>
+    python3 parse_results.py --tool mdtest --config /path/to/config.json --dir /work/results/mdtest/<runid>
 
     Redirect to file:
     python3 parse_results.py --tool ior --config /path/to/config.json --dir /path/to/runid > results.csv
@@ -32,11 +33,17 @@ def load_config(config_path: Path) -> dict:
 
 # ---------------------------------------------------------------------------
 # Test name parsing
-# Filename format:
-# ior.16-clients.64-ppn.10g-blocksize.1m-xfersize.1-directio.1-fileperproc.0-random.posix-api.off-checksums.write.log
+#
+# IOR filename format:
+# <runid>_<datestamp>_ior.16-clients.8-ppn.default-pool.1m-stripesize.8-stripecount.
+#   10g-size.1m-xfersize.1-directio.1-fileperproc.0-random.posix-api.off-checksums.write_ior.log
+#
+# mdtest filename format:
+# <runid>_<datestamp>_mdtest.16-clients.96-ppn.default-pool.1m-stripesize.1-stripecount.
+#   5000-objects.1-branching.0-depth.0-uniquedir.0-itemsperdir.1-directio_mdtest.log
 # ---------------------------------------------------------------------------
 
-FILENAME_PARAM_COLUMNS = [
+IOR_FILENAME_PARAM_COLUMNS = [
     "tool",
     "clients",
     "ppn",
@@ -53,15 +60,34 @@ FILENAME_PARAM_COLUMNS = [
     "operation",
 ]
 
-def parse_test_name(filename: str) -> dict:
+MDTEST_FILENAME_PARAM_COLUMNS = [
+    "tool",
+    "clients",
+    "ppn",
+    "pools",
+    "stripesize",
+    "stripe_count",
+    "objects",
+    "branching",
+    "depth",
+    "uniquedir",
+    "itemsperdir",
+    "directio",
+]
+
+
+def parse_test_name(filename: str, tool: str) -> dict:
     """Break a log filename into its component parameters."""
     stem = Path(filename).stem          # strip .log
-    stem = stem[stem.index("ior."):]    # strip runid_datestamp_ prefix
-    stem = stem.replace("_ior", "")     # strip trailing _ior from operation
+    stem = stem[stem.index(f"{tool}."):]  # strip runid_datestamp_ prefix
+    stem = stem.replace(f"_{tool}", "")   # strip trailing _<tool> suffix
+
     parts = stem.split(".")
 
+    columns = IOR_FILENAME_PARAM_COLUMNS if tool == "ior" else MDTEST_FILENAME_PARAM_COLUMNS
+
     params = {}
-    for i, key in enumerate(FILENAME_PARAM_COLUMNS):
+    for i, key in enumerate(columns):
         if i < len(parts):
             params[key] = parts[i].split("-")[0]
         else:
@@ -84,7 +110,7 @@ IOR_SUMMARY_COLUMNS = {
     "Mean(s)":   "Mean_Latency(s)",
 }
 
-METRIC_COLUMNS = list(IOR_SUMMARY_COLUMNS.values())
+IOR_METRIC_COLUMNS = list(IOR_SUMMARY_COLUMNS.values())
 
 
 def parse_ior_log(log_path: Path) -> dict:
@@ -107,6 +133,73 @@ def parse_ior_log(log_path: Path) -> dict:
                         metrics[out_col] = row.get(src_col, "")
                     break
             break
+
+    return metrics
+
+
+# ---------------------------------------------------------------------------
+# mdtest log parsing — targets the "SUMMARY rate:" table
+# ---------------------------------------------------------------------------
+
+# Each row in the SUMMARY rate table becomes a set of columns:
+# <RowName>_Max, <RowName>_Min, <RowName>_Mean, <RowName>_StdDev
+MDTEST_SUMMARY_ROWS = [
+    "Directory creation",
+    "Directory stat",
+    "Directory rename",
+    "Directory removal",
+    "File creation",
+    "File stat",
+    "File read",
+    "File removal",
+    "Tree creation",
+    "Tree removal",
+]
+
+MDTEST_METRIC_COLUMNS = [
+    f"{row.replace(' ', '_')}_{stat}"
+    for row in MDTEST_SUMMARY_ROWS
+    for stat in ("Max", "Min", "Mean", "StdDev")
+]
+
+
+def parse_mdtest_log(log_path: Path) -> dict:
+    """
+    Parse an mdtest log file and extract metrics from the SUMMARY rate table.
+    Returns a flat dict of output_column_name -> value.
+    """
+    lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    metrics = {}
+
+    in_summary = False
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.startswith("SUMMARY rate"):
+            in_summary = True
+            continue
+
+        if not in_summary:
+            continue
+
+        # skip header/separator lines
+        if stripped.startswith("Operation") or stripped.startswith("---"):
+            continue
+
+        if not stripped:
+            continue
+
+        # match the row name against known operations (longest match first)
+        for row_name in sorted(MDTEST_SUMMARY_ROWS, key=len, reverse=True):
+            if stripped.startswith(row_name):
+                rest = stripped[len(row_name):].split()
+                if len(rest) >= 4:
+                    base = row_name.replace(" ", "_")
+                    metrics[f"{base}_Max"]    = rest[0]
+                    metrics[f"{base}_Min"]    = rest[1]
+                    metrics[f"{base}_Mean"]   = rest[2]
+                    metrics[f"{base}_StdDev"] = rest[3]
+                break
 
     return metrics
 
@@ -138,13 +231,14 @@ def numeric_sort_val(val: str):
     return (1, val.lower())
 
 
-def get_sort_key(row: dict, config_params: dict) -> tuple:
+def get_sort_key(row: dict, config_params: dict, sort_first: list) -> tuple:
     """
     Build a sort tuple from the row.
-    operation is always first so reads/writes group together.
+    sort_first columns (if present) come first so related results group together.
     Remaining params follow config key order so incrementing values step naturally.
     """
-    sort_cols = ["operation"] + [k for k in config_params if k != "operation"]
+    sort_cols = [c for c in sort_first if c in row] + \
+        [k for k in config_params if k not in sort_first]
 
     key = []
     for col in sort_cols:
@@ -157,7 +251,7 @@ def get_sort_key(row: dict, config_params: dict) -> tuple:
 # Report generation
 # ---------------------------------------------------------------------------
 
-def generate_ior_report(run_dir: Path, config: dict) -> None:
+def generate_report(run_dir: Path, config: dict, tool: str) -> None:
     log_files = sorted(run_dir.glob("*.log"))
 
     if not log_files:
@@ -166,11 +260,22 @@ def generate_ior_report(run_dir: Path, config: dict) -> None:
 
     print(f"Found {len(log_files)} log files\n", file=sys.stderr)
 
-    config_params = config.get("tests", {}).get("ior", {})
+    config_params = config.get("tests", {}).get(tool, {})
 
-    filename_params = [c for c in FILENAME_PARAM_COLUMNS if c != "tool"]
+    if tool == "ior":
+        filename_columns = IOR_FILENAME_PARAM_COLUMNS
+        metric_columns = IOR_METRIC_COLUMNS
+        sort_first = ["operation"]
+        log_parser = parse_ior_log
+    else:
+        filename_columns = MDTEST_FILENAME_PARAM_COLUMNS
+        metric_columns = MDTEST_METRIC_COLUMNS
+        sort_first = []
+        log_parser = parse_mdtest_log
 
-    log_captured = {c.lower() for c in FILENAME_PARAM_COLUMNS}
+    filename_params = [c for c in filename_columns if c != "tool"]
+
+    log_captured = {c.lower() for c in filename_columns}
     extra_config_params = [
         k for k in config_params
         if k not in log_captured
@@ -181,15 +286,15 @@ def generate_ior_report(run_dir: Path, config: dict) -> None:
         ["run_id"]
         + filename_params
         + extra_config_params
-        + METRIC_COLUMNS
+        + metric_columns
     )
 
     rows = []
     run_id = run_dir.name
 
     for log_file in log_files:
-        params  = parse_test_name(log_file.name)
-        metrics = parse_ior_log(log_file)
+        params  = parse_test_name(log_file.name, tool)
+        metrics = log_parser(log_file)
 
         if not metrics:
             print(f"  WARNING: no summary data found in {log_file.name}", file=sys.stderr)
@@ -204,13 +309,13 @@ def generate_ior_report(run_dir: Path, config: dict) -> None:
             val = config_params.get(col, [""])[0]
             row[col] = val
 
-        for col in METRIC_COLUMNS:
+        for col in metric_columns:
             row[col] = metrics.get(col, "")
 
         rows.append(row)
 
-    # sort: operation first, then remaining config params in config order, all ascending
-    rows.sort(key=lambda r: get_sort_key(r, config_params))
+    # sort: sort_first columns first, then remaining config params in config order, all ascending
+    rows.sort(key=lambda r: get_sort_key(r, config_params, sort_first))
 
     writer = csv.writer(sys.stdout)
     writer.writerow(all_columns)
@@ -256,11 +361,7 @@ def main() -> None:
 
     config = load_config(args.config)
 
-    if args.tool == "ior":
-        generate_ior_report(args.dir, config)
-    elif args.tool == "mdtest":
-        print("mdtest parsing not yet implemented.", file=sys.stderr)
-        sys.exit(1)
+    generate_report(args.dir, config, args.tool)
 
 
 if __name__ == "__main__":

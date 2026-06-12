@@ -82,7 +82,7 @@ class MDTestBenchmark:
 
 		cmd += f" -d {data_path}"
 
-		with open(f"{self.log_path}/mdtest/{self.runid_base}/{self.fname}.mdtest.log", "w") as log_file:
+		with open(f"{self.log_path}/mdtest/{self.runid_base}/{self.fname}", "w") as log_file:
 
 			process = subprocess.run(
 			    ["bash", "-c", cmd],
