@@ -61,9 +61,9 @@ class MDTestBenchmark:
 	def start(self):
 		
 		cmd = self._cmd_builder()
-		if self.params["pools"] != "default":
-			data_path = Path(f"{self.data_path_root}/mdtest")
-			data_path.mkdir(parents=True, exist_ok=True)
+		data_path = Path(f"{self.data_path_root}/mdtest")
+		data_path.mkdir(parents=True, exist_ok=True)
+		if self.params["pools"] != "default":	
 			pool_stripe_cmd = f"lfs setstripe -p {self.params['pools']} -S {self.params['stripesize']} -c {self.params['stripecount']} {data_path}"
 			pool_overstripe_cmd = f"lfs setstripe -p {self.params['pools']} -S {self.params['stripesize']} -C {self.params['stripecount']} {data_path}"
 

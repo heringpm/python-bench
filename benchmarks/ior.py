@@ -42,6 +42,21 @@ class IORBenchmark:
 			data_path = Path(f"{self.data_path_root}/ior")
 			data_path.mkdir(parents=True, exist_ok=True)
 
+		## CLIENTS TO USE
+		with open(self.machinefile, "r") as f:
+			lines = f.readlines()
+			line_count = len(lines)
+			client_count = int(self.params["clients"])
+			hosts = [line.strip() for line in lines[:client_count]]
+			host_string = ",".join(hosts)
+
+			if line_count == self.params["clients"]:
+				hosts_var = f"--machinefile {self.machinefile}"
+			elif line_count > self.params["clients"]:
+				hosts_var = f"--host {host_string}"
+			elif line_count < self.params["clients"]:
+				raise ValueError("ERROR - Not enough clients in machinefile to satisfy client count request!")
+
 		run_options = ""
 		## OPERATION
 		if self.params["operation"] == "write":
@@ -63,22 +78,36 @@ class IORBenchmark:
 
 		## RANDOM
 		if self.params["randomoffset"] == 1:
-			run_options += " -z "
+			if self.params["operation"] == "read":
+				### Run file layout
+				with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.layout", "w") as layout_log_file:
 
-		## CLIENTS TO USE
-		with open(self.machinefile, "r") as f:
-			lines = f.readlines()
-			line_count = len(lines)
-			client_count = int(self.params["clients"])
-			hosts = [line.strip() for line in lines[:client_count]]
-			host_string = ",".join(hosts)
+					if some_condition:
+					    parts = run_options.split()
+					    parts = ["-w" if p == "-r" else p for p in parts]
+					    layout_run_options = " " + " ".join(parts) + " "
 
-			if line_count == self.params["clients"]:
-				hosts_var = f"--machinefile {self.machinefile}"
-			elif line_count > self.params["clients"]:
-				hosts_var = f"--host {host_string}"
-			elif line_count < self.params["clients"]:
-				raise ValueError("ERROR - Not enough clients in machinefile to satisfy client count request!")
+					layout_cmd = (
+						f'{self.mpirun_path} {hosts_var} '
+						f'{self.mpi_conf} --np {total_ppn} '
+						f'{self.ior_path} -a {self.params["api"]} -v -d 1 '
+						f'-b {self.params["blocksize"]} -t {self.params["xfersize"]} '
+						f'{layout_run_options} {self.params["extra_args"]} -o {data_path}/f'
+
+					)
+
+					layout_process = subprocess.run(
+					    ["bash", "-c", layout_cmd],
+					    stdin=subprocess.DEVNULL,
+					    stdout=layout_log_file,
+					    stderr=layout_log_file
+					)
+
+				### Once layout is finished add the random flag back in to run_options
+				if layout_process.returncode == 0:
+					run_options += " -z "
+			else:
+				run_options += " -z "
 
 		with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}", "w") as log_file:
 
