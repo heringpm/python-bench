@@ -106,6 +106,8 @@ class IORBenchmark:
 				### Once layout is finished add the random flag back in to run_options
 				if layout_process.returncode == 0:
 					run_options += " -z "
+				else:
+					print("There was an issue with the file layout!")
 			else:
 				run_options += " -z "
 
