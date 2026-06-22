@@ -13,6 +13,7 @@ from typing import Any, Union
 from monitoring import SFAMonitoring
 from benchmarks.ior import IORBenchmark
 from benchmarks.mdtest import MDTestBenchmark
+from benchmarks.fio import FIOBenchmark
 from datetime import datetime
 from itertools import product
 

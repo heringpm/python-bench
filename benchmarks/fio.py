@@ -24,19 +24,19 @@ class FIOBenchmark:
 
 	def _stop_fio_server(self):
 		stop_server_cmd = f"clush  --machinefile {self.machinefile} killall fio"
-		stop_server_process = subprocess.run(["bash", "-c", stop_server_process])
+		stop_server_process = subprocess.run(["bash", "-c", stop_server_cmd])
 
 
 	def run(self):
 
 		self._start_fio_server()
-		try
+		try:
 
 			### Build out needed params
 
 			## DATA POOLS
 			if self.params["pools"] != "default":
-				data_path = Path(f"{self.data_path_root}/ior/{self.params['pools']}")
+				data_path = Path(f"{self.data_path_root}/fio/{self.params['pools']}")
 				data_path.mkdir(parents=True, exist_ok=True)
 				pool_stripe_cmd = f"lfs setstripe -p {self.params['pools']} -S {self.params['stripesize']} -c {self.params['stripecount']} {data_path}"
 				pool_overstripe_cmd = f"lfs setstripe -p {self.params['pools']} -S {self.params['stripesize']} -C {self.params['stripecount']} {data_path}"
@@ -83,7 +83,7 @@ class FIOBenchmark:
 
 				if self.params["timebased"]:
 					job_file = f"{self.fio_job_path}/fio_timebased.job"
-					cmd += f'RUNTIME={self.params["runtime"]}s '
+					cmd += f' RUNTIME={self.params["runtime"]}s '
 
 				else :
 					job_file = f"{self.fio_job_path}/fio.job"

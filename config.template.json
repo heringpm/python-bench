@@ -64,7 +64,7 @@
       },
       "fio": {
         "pools":          ["ddn_hdd", "ddn_nvme"],
-        "stripecount":    [1,4],
+        "stripe_count":    [1,4],
         "stripesize":     ["1m"],
         "clients":        [1,2,4,8,16],
         "ppn":            [64],
