@@ -41,6 +41,13 @@ class IORBenchmark:
 		else:
 			data_path = Path(f"{self.data_path_root}/ior")
 			data_path.mkdir(parents=True, exist_ok=True)
+			stripe_cmd = f"lfs setstripe -S {self.params['stripesize']} -c {self.params['stripecount']} {data_path}"
+				overstripe_cmd = f"lfs setstripe -S {self.params['stripesize']} -C {self.params['stripecount']} {data_path}"
+
+				set_stripe_process = subprocess.run(["bash", "-c", stripe_cmd])
+
+				if set_stripe_process.returncode != 0:
+					set_overstripe_process = subprocess.run(["bash", "-c", stripe_cmd])
 
 		## CLIENTS TO USE
 		with open(self.machinefile, "r") as f:
