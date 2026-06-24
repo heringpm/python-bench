@@ -101,7 +101,7 @@ class IORBenchmark:
 						f'{layout_run_options} {self.params["extra_args"]} -o {data_path}/f'
 
 					)
-
+					print(layout_cmd)
 					layout_process = subprocess.run(
 					    ["bash", "-c", layout_cmd],
 					    stdin=subprocess.DEVNULL,
