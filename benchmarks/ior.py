@@ -85,7 +85,7 @@ class IORBenchmark:
 
 		## RANDOM
 		if self.params["randomoffset"] == 1:
-			if self.params["operation"] == "read":
+			if self.params["operation"] == "read" and self.params["file_layout"]:
 				### Run file layout
 				with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.layout", "w") as layout_log_file:
 
