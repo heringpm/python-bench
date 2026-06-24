@@ -34,6 +34,7 @@
         "fileperproc":    [1],
         "keep_files":     [1],
         "extra_args":     ["-e"],
+        "file_layout":    [0],
         "operation":      ["write", "read"]
       },
       "mdtest": {
