@@ -89,10 +89,9 @@ class IORBenchmark:
 				### Run file layout
 				with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.layout", "w") as layout_log_file:
 
-					if some_condition:
-					    parts = run_options.split()
-					    parts = ["-w" if p == "-r" else p for p in parts]
-					    layout_run_options = " " + " ".join(parts) + " "
+				    parts = run_options.split()
+				    parts = ["-w" if p == "-r" else p for p in parts]
+				    layout_run_options = " " + " ".join(parts) + " "
 
 					layout_cmd = (
 						f'{self.mpirun_path} {hosts_var} '
