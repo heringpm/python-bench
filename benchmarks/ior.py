@@ -89,9 +89,15 @@ class IORBenchmark:
 				### Run file layout
 				with open(f"{self.log_path}/ior/{self.runid_base}/{self.fname}.layout", "w") as layout_log_file:
 
-				    parts = run_options.split()
-				    parts = ["-w" if p == "-r" else p for p in parts]
-				    layout_run_options = " " + " ".join(parts) + " "
+					## Delete previous run data before running write if 'deletefiles' is true
+					if self.deletefiles:
+						print("Cleaning up datapath from previous runs...")
+						deletefiles_cmd = f"rm -rf {data_path}/*"
+						deletefiles_process = subprocess.run(["bash", "-c", deletefiles_cmd])
+
+					parts = run_options.split()
+					parts = ["-w" if p == "-r" else p for p in parts]
+					layout_run_options = " " + " ".join(parts) + " "
 
 					layout_cmd = (
 						f'{self.mpirun_path} {hosts_var} '
