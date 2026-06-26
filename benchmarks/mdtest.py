@@ -73,7 +73,7 @@ class MDTestBenchmark:
 				set_overstripe_process = subprocess.run(["bash", "-c", pool_stripe_cmd])
 
 			if self.params['DOM']:
-				set_dom_cmd = f"lfs setstripe -E 64k -L mdt -p {self.params['pools']} {data_path}"
+				set_dom_cmd = f"lfs setstripe -E 64k -L mdt {data_path}"
 				set_dom_process = subprocess.run(["bash", "-c", set_dom_cmd])
 		else:
 
