@@ -113,7 +113,7 @@ def generate_tool_tests(params: dict, tool) -> dict:
 		for cfg in _generate_combos(params):
 			name = (
 				f"mdtest.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripesize']}-stripesize.{cfg['stripecount']}-stripecount.{cfg['DOM']}-DOM.{cfg['objects']}-objects."
-				f"{cfg['branching']}-branching.{cfg['depth']}-depth.{cfg['uniquedir']}-uniquedir.{cfg['itemsperdir']}-itemsperdir.{cfg['directio']}-directio"
+				f"{cfg['branching']}-branching.{cfg['depth']}-depth.{cfg['byteswrite']}-byteswrite.{cfg['uniquedir']}-uniquedir.{cfg['itemsperdir']}-itemsperdir.{cfg['directio']}-directio"
 			)
 			tests[name] = cfg
 	elif tool == "fio":
