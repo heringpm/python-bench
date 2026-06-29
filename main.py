@@ -253,6 +253,7 @@ def main() -> None:
 
 				completed += 1
 				print(f"  ✓  [{completed}/{total}] Done\n")
+				monitoring.stop()
 		except KeyboardInterrupt:
 			interrupted = True
 
