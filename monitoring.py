@@ -54,7 +54,9 @@ class SFAMonitoring:
 		if not self.processes:
 			print("No monitors running.")
 			return
-
+			
+		stop_cmd = "killall pdstats_v11.py3; vdstats_v12.py3"
+        self.kill_process = subprocess.run(["bash", "-c", stop_cmd])
 
 		for appliance, data in self.processes.items():
 			data["process"].terminate()

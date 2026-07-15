@@ -95,8 +95,22 @@ class FIOBenchmark:
 				else :
 					job_file = f"{self.fio_job_path}/fio.job"
 
-				cmd += f' {self.fio_path} {hosts_var} {job_file}'
-				
+				if self.params["operation"] in ("write", "randwrite"):
+					layout_cmd = (
+						f'IOENGINE={self.params["ioengine"]} '
+						f'IODEPTH={self.params["iodepth"]} FILESIZE={self.params["filesize"]} '
+						f'NUMJOBS={self.params["ppn"]} DIRECTORY={data_path} '
+						f' {self.fio_path} {hosts_var} {self.fio_job_path}/fio_create.job'
+					)
+
+					layout_process = subprocess.run(
+				    	["bash", "-c", layout_cmd],
+				    	stdin=subprocess.DEVNULL,
+				    	stdout=log_file,
+				    	stderr=log_file
+					)
+
+				cmd += f' {self.fio_path} {hosts_var} {job_file}'				
 
 				process = subprocess.run(
 				    ["bash", "-c", cmd],

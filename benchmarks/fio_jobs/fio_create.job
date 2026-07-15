@@ -1,0 +1,15 @@
+[fiojob]
+create_only=1
+create_serialize=0
+direct=1
+ioengine=${IOENGINE}
+rw=read
+blocksize=4m
+iodepth=${IODEPTH}
+filesize=${FILESIZE}
+numjobs=${NUMJOBS}
+group_reporting
+norandommap=0
+fallocate=none
+filename_format=fio.$jobnum.$filenum
+directory=${DIRECTORY}
