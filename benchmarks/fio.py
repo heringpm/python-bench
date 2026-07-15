@@ -83,7 +83,7 @@ class FIOBenchmark:
 
 				if self.params["operation"] in ("rw", "randrw"):
 					cmd += f' RWMIXREAD={self.params["rwmixread"]}'
-				elif self.params["operation"] == "write":
+				elif self.params["operation"] in ("write", "randwrite"):
 					cmd += f' RWMIXREAD=0'
 				elif self.params["operation"] in ("read", "randread"):
 					cmd += f' RWMIXREAD=100'
