@@ -1,6 +1,6 @@
 [
   {
-    "data_path_root": "/edf",
+    "data_path_root": "/x3e06i",
     "machine_file": "./machinefile.16",
     "tuning_files": {
       "tune_checksums": "./utils/tune-checksums.sh",
@@ -8,39 +8,35 @@
     },
     "mpirun_path": "/work/bin/benchmark_bin/openmpi-5.0.10b/bin/mpirun",
     "mpi_conf": "-x UCX_LOG_LEVEL=error -x UCX_NET_DEVICES=mlx5_0:1 --map-by node --bind-to core:overload-allowed --use-hwthread-cpus --oversubscribe --allow-run-as-root",
-    "log_path": "/work/home/phering/logging_bench_test",
+    "log_path": "/work2/phering/logging_bench_test",
     "tools": {
-      "mdtest": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/mdtest"
+      "elbencho": "/work/home/phering/elbencho"
     },
     "appliances": {
-      "400x3e01": "sv30[0-3]",
-      "400x3e03": "sv33[0-3]"
+      "400x3e06i": "sv36[0-1]"
     },
     "tests": {
-      "mdtest": {
-        "pools":          ["ddn_hdd", "ddn_nvme"],
+      "elbencho": {
+        "pools":          ["ddn_nvme"],
+        "stripecount":    [1],
+        "stripesize":     ["1m"],
         "clients":        [16],
-        "ppn":            [64],
-        "objects":        ["4000"],
-        "branching":      ["1"],
-        "depth":          ["0"],
-        "bytesread":      ["0"],
-        "byteswrite":     ["0"],
-        "iterations":     ["1"],
-        "itemsperdir":    ["0"],
+        "ppn":            [48],
+        "checksums":      ["off"],
+        "filesize":       ["200g"],
+	"runtime":        [60],
+        "files":          [1],
+        "blocksize":      ["1m"],
+        "iodepth":        [64],
+        "blockvaralgo":   ["fast"],
+        "blockvarpct":    [100],
         "directio":       [1],
-        "onlycreate":     [0],
-        "onlystat":       [0],
-        "onlyread":       [0],
-        "onlyremove":     [0],
-        "dironly":        [0],
-        "fileonly":       [0],
-        "uniquedir":      [0],
-        "verbose":        ["-v"],
-        "syncafterwrite": [0],
-        "extra_args":     [""]
+	"random":         [1],
+        "file_layout":    [1],
+        "extra_args":     [""],
+        "operation":      ["write", "read"]
       }
     }
-    
+
   }
 ]

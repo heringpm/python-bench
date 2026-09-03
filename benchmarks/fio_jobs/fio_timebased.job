@@ -14,3 +14,4 @@ norandommap=0
 fallocate=none
 filename_format=fio.$jobnum.$filenum
 directory=${DIRECTORY}
+${EXTRA_ARGS}

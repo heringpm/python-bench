@@ -1,0 +1,50 @@
+[
+  {
+    "data_path_root": "/edf",
+    "machine_file": "./machinefile.16",
+    "tuning_files": {
+      "tune_checksums": "./utils/tune-checksums.sh",
+      "tune_no_checksums": "./utils/tune-no-checksums.sh"
+    },
+    "mpirun_path": "/work/bin/benchmark_bin/openmpi-5.0.10b/bin/mpirun",
+    "mpi_conf": "-x UCX_LOG_LEVEL=error -x UCX_NET_DEVICES=mlx5_0:1 --map-by node --bind-to core:overload-allowed --use-hwthread-cpus --oversubscribe --allow-run-as-root",
+    "log_path": "/work/home/phering/logging_bench_test",
+    "tools": {
+      "mdtest": "/work/bin/benchmark_bin/ior-4.0.0-openmpi-5.0.10/bin/mdtest"
+    },
+    "appliances": {
+      "400x3e01": "sv30[0-3]",
+      "400x3e03": "sv33[0-3]"
+    },
+    "tests": {
+      "mdtest": {
+        "pools":          ["ddn_hdd", "ddn_nvme"],
+        "stripesize":     ["1m"],
+        "stripecount":    [1,4],
+        "DOM":            [0],
+        "checksums":      ["off"],
+        "clients":        [16],
+        "ppn":            [64],
+        "objects":        ["4000"],
+        "branching":      ["1"],
+        "depth":          ["0"],
+        "bytesread":      ["0"],
+        "byteswrite":     ["0"],
+        "iterations":     ["1"],
+        "itemsperdir":    ["0"],
+        "directio":       [1],
+        "onlycreate":     [0],
+        "onlystat":       [0],
+        "onlyread":       [0],
+        "onlyremove":     [0],
+        "dironly":        [0],
+        "fileonly":       [0],
+        "uniquedir":      [0],
+        "verbose":        ["-v"],
+        "syncafterwrite": [0],
+        "extra_args":     [""]
+      }
+    }
+    
+  }
+]
