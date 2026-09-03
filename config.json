@@ -10,31 +10,27 @@
     "mpi_conf": "-x UCX_LOG_LEVEL=error -x UCX_NET_DEVICES=mlx5_0:1 --map-by node --bind-to core:overload-allowed --use-hwthread-cpus --oversubscribe --allow-run-as-root",
     "log_path": "/work2/phering/logging_bench_test",
     "tools": {
-      "elbencho": "/work/home/phering/elbencho"
+      "mlperf": "/work/bin/benchmark_bin/mlperf-storage-venv/bin/mlpstorage"
     },
     "appliances": {
       "400x3e06i": "sv36[0-1]"
     },
     "tests": {
-      "elbencho": {
-        "pools":          ["ddn_nvme"],
-        "stripecount":    [1],
-        "stripesize":     ["1m"],
-        "clients":        [16],
-        "ppn":            [48],
-        "checksums":      ["off"],
-        "filesize":       ["200g"],
-	"runtime":        [60],
-        "files":          [1],
-        "blocksize":      ["1m"],
-        "iodepth":        [64],
-        "blockvaralgo":   ["fast"],
-        "blockvarpct":    [100],
-        "directio":       [1],
-	"random":         [1],
-        "file_layout":    [1],
-        "extra_args":     [""],
-        "operation":      ["write", "read"]
+      "mlperf": {
+        "checksums":            ["off"],
+        "clients":              [16],
+        "ppn":                  [8],
+        "model":                ["unet3d", "cosmoflow", "resnet50"],
+        "operation":            ["run"],
+        "accelerator_type":     ["h100"],
+        "client_host_memory_gb":[64],
+        "max_accelerators":     [8],
+        "read_threads":         [8],
+        "loops":                [1],
+        "mpi_params":           ["-x PATH --map-by ppr:8:node:PE=6 --bind-to hwthread --mca btl_tcp_if_include ibs1f0 --mca oob_tcp_if_include ibs1f0 --use-hwthread-cpus"],
+        "extra_args":           [""],
+        "skip_datagen":         [0],
+        "file_counts":          [{"unet3d": 224000, "cosmoflow": 5830919, "resnet50": 114978}]
       }
     }
 

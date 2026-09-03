@@ -156,12 +156,30 @@ def generate_tool_tests(params: dict, tool) -> dict:
             name = f"fio_parallel.job1-{_fio_combo_name(cfg1)}__job2-{_fio_combo_name(cfg2)}"
             _add_test(tests, name, {"job1": cfg1, "job2": cfg2, "job2_start_delay": job2_start_delay})
     elif tool == "mlperf":
-        for cfg in _generate_combos(params):
-            name = (
-                f"mlperf.{cfg['model']}-model.{cfg['operation']}-operation.{cfg['clients']}-clients.{cfg['ppn']}-ppn."
-                f"{cfg['accelerator_type']}-accelerator"
-            )
-            _add_test(tests, name, cfg)
+        # "file_counts" tags specific dataset sizes to specific models (e.g.
+        # {"unet3d": [224000, 448000], "resnet50": 114978}) instead of being
+        # cross-produced against every model like the other params. A model
+        # with no entry falls back to running the "datasize" phase to
+        # calculate its count. Values may be a single int or a list of ints
+        # (to run more than one file count for the same model).
+        file_counts_map = (params.get("file_counts") or [{}])[0]
+        other_params = {k: v for k, v in params.items() if k not in ("model", "file_counts")}
+        for model in params["model"]:
+            counts = file_counts_map.get(model, [None])
+            if not isinstance(counts, list):
+                counts = [counts]
+            for count in counts:
+                for other_combo in product(*other_params.values()):
+                    cfg = dict(zip(other_params.keys(), other_combo))
+                    cfg["model"] = model
+                    cfg["file_counts"] = {model: count} if count is not None else {}
+                    name = (
+                        f"mlperf.{cfg['model']}-model.{cfg['operation']}-operation.{cfg['clients']}-clients.{cfg['ppn']}-ppn."
+                        f"{cfg['accelerator_type']}-accelerator"
+                    )
+                    if count is not None:
+                        name += f".{count}-files"
+                    _add_test(tests, name, cfg)
     elif tool == "elbencho":
         for cfg in _generate_combos(params):
             name = (
