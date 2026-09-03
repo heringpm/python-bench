@@ -191,6 +191,45 @@ resolves its file count (from `file_counts`, or by running `datasize`) and
 runs `datagen` first; if `datagen` fails, the `run` phase is skipped for that
 test rather than running against an incomplete dataset.
 
+### Letting `datasize` calculate the file count automatically
+
+To have a model's file count calculated for you instead of hardcoding it,
+simply don't tag that model in `file_counts`. If you don't want to tag *any*
+model, either omit the `file_counts` key entirely or set it to an empty dict
+wrapped in a list:
+
+```json
+"file_counts": [{}]
+```
+
+With no entry for a model, `_resolve_num_files()` runs the `datasize` phase
+first (using `client_host_memory_gb` and `max_accelerators` from the config),
+logs its output to `{fname}.datasize`, and parses the resulting
+`dataset.num_files_train=N` line out of it to get the count. That count then
+feeds into `datagen` and `run` automatically — no manual calculation or
+`mlpstorage datasize` step needed on your part. If the output can't be parsed
+(e.g. `mlpstorage`'s output format changes, or in `--dry-run` mode where
+`datasize` doesn't actually execute), the code falls back to a hardcoded
+`NUM_FILES_BY_MODEL` map in `benchmarks/mlperf.py` — update that map if a new
+model needs a sane fallback value.
+
+### Avoiding a double `datagen` pass
+
+`operation` is a list, so every value in it produces its own separate test
+entry. Including **both** `"datagen"` and `"run"` — e.g.
+`"operation": ["datagen", "run"]` — generates two tests: one that runs
+`datagen` standalone, and a second `run` test that (since `run` already
+auto-generates the dataset unless `skip_datagen: 1`) generates the dataset
+*again* before running the benchmark. This wastes time regenerating the same
+data twice.
+
+- If you just want the benchmark to run (the normal case): use
+  `"operation": ["run"]` only. `datagen` happens automatically as part of it.
+- If you want to pre-stage the dataset as a separate step ahead of time
+  (e.g. to generate data once and reuse it across many later `run`s): use
+  `"operation": ["datagen"]` to generate it, then run with
+  `"operation": ["run"], "skip_datagen": [1]` so `run` doesn't regenerate it.
+
 ## `elbencho`
 
 Uses a persistent `elbencho --service` daemon on each client (started once
