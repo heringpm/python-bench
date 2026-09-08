@@ -17,6 +17,7 @@ from benchmarks.fio import FIOBenchmark
 from benchmarks.fio_parallel import FIOParallelBenchmark
 from benchmarks.mlperf import MLPerfBenchmark
 from benchmarks.elbencho import ElbenchoBenchmark
+from benchmarks.io500 import IO500Benchmark
 from utils.shell import run_cmd
 from datetime import datetime
 from itertools import product
@@ -185,6 +186,13 @@ def generate_tool_tests(params: dict, tool) -> dict:
             name = (
                 f"elbencho.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripesize']}-stripesize.{cfg['stripecount']}-stripecount."
                 f"{cfg['blocksize']}-blocksize.{cfg['filesize']}-filesize.{cfg['iodepth']}-iodepth.{cfg['directio']}-directio.{cfg['operation']}-operation"
+            )
+            _add_test(tests, name, cfg)
+    elif tool == "io500":
+        for cfg in _generate_combos(params):
+            name = (
+                f"io500.{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripesize']}-stripesize.{cfg['stripecount']}-stripecount."
+                f"{cfg.get('stonewall_time', 300)}-stonewall"
             )
             _add_test(tests, name, cfg)
     return tests
@@ -379,6 +387,20 @@ def main() -> None:
                         manage_service=False
                     )
                     elbencho.run()
+                elif tool == "io500":
+                    io500 = IO500Benchmark(
+                        params=params,
+                        io500_path=tool_path,
+                        mpirun_path=mpirun_path,
+                        mpi_conf=mpi_conf,
+                        data_path_root=data_path_root,
+                        log_path=log_path,
+                        runid_base=runid_base,
+                        fname=f"{runid}_{file_stamp}_{test}_io500.log",
+                        machinefile=machinefile,
+                        dry_run=args.dry_run
+                    )
+                    io500.run()
 
                 completed += 1
                 print(f"  ✓  [{completed}/{total}] Done\n")

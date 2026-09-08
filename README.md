@@ -1,8 +1,8 @@
 # python-bench
 
 A Python-based benchmarking suite for Lustre storage. It drives `ior`, `mdtest`,
-`fio` (including a parallel dual-job mode), `mlperf` (via `mlpstorage`), and
-`elbencho` from a single `config.json`, automatically striping Lustre pools,
+`fio` (including a parallel dual-job mode), `mlperf` (via `mlpstorage`),
+`elbencho`, and `io500` from a single `config.json`, automatically striping Lustre pools,
 managing per-tool client services (`fio --server`, `elbencho --service`),
 starting/stopping SFA monitoring, and scraping key metrics (IOPS, throughput,
 etc.) to the console as each test runs.
@@ -39,10 +39,10 @@ These top-level `config.json` keys apply across all tools:
 | `data_path_root` | Root Lustre path under which each tool creates its own subdirectory (`<data_path_root>/ior`, `/fio`, `/mlperf`, `/elbencho`, etc.). |
 | `machine_file` | Path to the default client machinefile (one host per line) used to pick clients for tests. |
 | `tuning_files.tune_checksums` / `tune_no_checksums` | Scripts run against the client machinefile before each test, selected by that test's `checksums` param (`"on"`/`"off"`). |
-| `mpirun_path` | Path to the `mpirun` binary used by `ior` and `mdtest`. |
-| `mpi_conf` | Generic OpenMPI flags passed to `ior`/`mdtest` (e.g. UCX/interface settings, `--map-by`, `--bind-to`, `--allow-run-as-root`). **Not used by `mlperf`** — see below. |
+| `mpirun_path` | Path to the `mpirun` binary used by `ior`, `mdtest`, and `io500`. |
+| `mpi_conf` | Generic OpenMPI flags passed to `ior`/`mdtest`/`io500` (e.g. UCX/interface settings, `--map-by`, `--bind-to`, `--allow-run-as-root`). **Not used by `mlperf`** — see below. |
 | `log_path` | Root directory for all logs and results; each run gets its own `<log_path>/<tool>/<runid>_<timestamp>/` directory. |
-| `tools.<name>` | Absolute path to each tool's binary (`ior`, `mdtest`, `fio`, `fio_parallel`, `mlperf`, `elbencho`). Only tools present here (and under `tests`) are run. |
+| `tools.<name>` | Absolute path to each tool's binary (`ior`, `mdtest`, `fio`, `fio_parallel`, `mlperf`, `elbencho`, `io500`). Only tools present here (and under `tests`) are run. |
 | `appliances` | Map of appliance name → hostname/range (e.g. `sv30[0-3]`), used for SFA monitoring and cache-drop/fstrim targets. |
 
 ### MPI configuration — where things get set
@@ -260,3 +260,45 @@ short-read errors against partially-written files; if `--delete-before-write`
 is also set, old data is cleaned up (and directories recreated) before that
 layout pass runs. If the layout pass fails, the read test for that combo is
 skipped rather than running against incomplete data.
+
+## `io500`
+
+Drives the official [`io500`](https://github.com/IO500/io500) binary via
+`mpirun` (using the global `mpirun_path`/`mpi_conf`, same as `ior`/`mdtest`).
+
+**Important:** `io500` statically links its own pinned `ior`/`mdtest`/`pfind`
+source into the `io500` binary at build time (see its `prepare.sh` /
+`Makefile`) — it does **not** shell out to external `ior`/`mdtest`
+executables at runtime. This means you can't point it at the `ior`/`mdtest`
+binaries already configured under `tools.ior`/`tools.mdtest`; you must build
+`io500` itself (via its own `prepare.sh`) and set `tools.io500` to the
+resulting `io500` binary path. That build only needs to happen once per
+environment/toolchain — the resulting binary is reusable across runs.
+
+Each test generates its own `.ini` file (mirroring `io500`'s config format)
+under `<log_path>/io500/<runid>/<fname>.ini` and launches `io500` against it.
+Config keys under `tests.io500`:
+
+| Param | Description |
+| --- | --- |
+| `pools` / `stripesize` / `stripecount` | Lustre striping for `io500`'s `datadir` (same pattern as the other tools). |
+| `api` | `io500`'s `[global] api` (e.g. `"POSIX"`). |
+| `drop_caches` | `1` to enable `io500`'s `[global] drop-caches`. |
+| `verbosity` | `io500`'s `[global] verbosity` (1-10). |
+| `stonewall_time` | `[debug] stonewall-time` — **must** meet the official IO500 rules for a valid submission; lower it only for quick debugging runs. |
+| `ior_easy_transfer_size` / `ior_easy_block_size` / `ior_easy_file_per_proc` | `[ior-easy]` `transferSize`/`blockSize`/`filePerProc`. |
+| `mdtest_easy_n` | `[mdtest-easy] n` (files per proc). |
+| `ior_hard_segment_count` | `[ior-hard] segmentCount`. |
+| `mdtest_hard_n` | `[mdtest-hard] n`. |
+| `run_ior_easy` / `run_mdtest_easy` / `run_find_easy` / `run_ior_hard` / `run_mdtest_hard` / `run_find` | `1`/`0` to toggle each phase's `run =` flag on/off. |
+| `extra_ini` | Escape hatch for any `io500` ini section/key not covered above, e.g. `{"ior-hard": {"collective": "TRUE"}, "mdworkbench": {"run": "TRUE"}}` — merged into (and overrides) the generated sections. |
+| `extra_args` | Extra CLI args appended after the `io500 <ini>` command (e.g. `--list-phases`, `--dry-run` for `io500`'s own dry-run mode). |
+
+`clients`/`ppn` are combined the same way as `ior` (`--host` sliced from the
+machinefile, `--np` = `clients * ppn`) to size the MPI launch that runs
+`io500` itself — `io500` then internally divides that rank count across its
+phases as usual.
+
+The results directory (`[global] resultdir`) is set to
+`<log_path>/io500/<runid>/`, so `io500`'s own result tarball/summary ends up
+alongside this suite's logs for that run.

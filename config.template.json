@@ -15,7 +15,8 @@
       "fio": "/work/bin/benchmark_bin/fio-3.42/fio",
       "fio_parallel": "/work/bin/benchmark_bin/fio-3.42/fio",
       "mlperf": "/work/bin/benchmark_bin/mlperf-storage-venv/bin/mlpstorage",
-      "elbencho": "/work/bin/benchmark_bin/elbencho/bin/elbencho"
+      "elbencho": "/work/bin/benchmark_bin/elbencho/bin/elbencho",
+      "io500": "/work/bin/benchmark_bin/io500/io500"
     },
     "appliances": {
       "400x3e01": "sv30[0-3]",
@@ -166,6 +167,32 @@
         "file_layout":    [0],
         "extra_args":     [""],
         "operation":      ["write", "read"]
+      },
+      "io500": {
+        "checksums":              ["off"],
+        "clients":                [4],
+        "ppn":                    [16],
+        "pools":                  ["default"],
+        "stripesize":             ["1m"],
+        "stripecount":            [1],
+        "api":                    ["POSIX"],
+        "drop_caches":            [0],
+        "verbosity":              [1],
+        "stonewall_time":         [300],
+        "ior_easy_transfer_size": ["2m"],
+        "ior_easy_block_size":    ["9920000m"],
+        "ior_easy_file_per_proc": [1],
+        "mdtest_easy_n":          [1000000],
+        "ior_hard_segment_count": [10000000],
+        "mdtest_hard_n":          [1000000],
+        "run_ior_easy":           [1],
+        "run_mdtest_easy":        [1],
+        "run_find_easy":          [1],
+        "run_ior_hard":           [1],
+        "run_mdtest_hard":        [1],
+        "run_find":               [1],
+        "extra_ini":              [{}],
+        "extra_args":             [""]
       }
     }
 
