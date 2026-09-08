@@ -160,3 +160,11 @@ class MLPerfBenchmark:
             raise ValueError(f"Unknown mlperf operation '{operation}' (expected 'datasize', 'datagen', or 'run').")
 
         self._exec_phase(cmd, self.fname)
+
+        if operation == "run" and not self.dry_run:
+            log_file_path = f"{self.log_path}/mlperf/{self.runid_base}/{self.fname}"
+            with open(log_file_path, "r") as f:
+                for line in f:
+                    line = line.rstrip("\n")
+                    if line.startswith("[METRIC]"):
+                        print(f"       {line[len('[METRIC]'):].strip()}")
