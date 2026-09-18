@@ -1,3 +1,4 @@
+import re
 import subprocess
 from pathlib import Path
 
@@ -142,14 +143,11 @@ class IO500Benchmark:
             ## the console live (in addition to the log file) rather than
             ## only printing a summary after it finishes.
             ##
-            ## io500 uses '\r' (not '\n') for its in-place progress updates
-            ## (e.g. per-rank "CMP ..."/"TIME: ..." clock-sync noise). Those
-            ## come from multiple MPI ranks writing to the same merged
-            ## stdout concurrently, so they can't be cleanly reconstructed
-            ## into a single in-place progress line - instead we just drop
-            ## '\r'-terminated fragments from the console entirely and only
-            ## echo real '\n'-terminated lines. The raw bytes (including the
-            ## '\r' noise) are still written to the log file untouched.
+            ## io500 prints one "CMP <ts><ts>"/"TIME: <ts>" line per MPI
+            ## rank during its startup clock-sync check, which is just
+            ## noise - those are dropped from the console (but still
+            ## written to the log file untouched, along with everything
+            ## else).
             log_path = f"{self.log_path}/io500/{self.runid_base}/{self.fname}"
             with open(log_path, "wb") as log_file:
                 process = subprocess.Popen(
@@ -165,14 +163,14 @@ class IO500Benchmark:
                     if not chunk:
                         break
                     log_file.write(chunk)
-                    if chunk == b"\n":
-                        print(f"       {buf.decode(errors='replace')}", flush=True)
-                        buf = b""
-                    elif chunk == b"\r":
+                    if chunk in (b"\n", b"\r"):
+                        line = buf.decode(errors="replace")
+                        if not re.match(r"^\s*(CMP\b|TIME:)", line):
+                            print(f"       {line}", end=chunk.decode(), flush=True)
                         buf = b""
                     else:
                         buf += chunk
-                if buf:
+                if buf and not re.match(r"^\s*(CMP\b|TIME:)", buf.decode(errors="replace")):
                     print(f"       {buf.decode(errors='replace')}")
                 process.wait()
 
