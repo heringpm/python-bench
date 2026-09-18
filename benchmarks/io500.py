@@ -143,11 +143,13 @@ class IO500Benchmark:
             ## only printing a summary after it finishes.
             ##
             ## io500 uses '\r' (not '\n') for its in-place progress updates
-            ## (e.g. "CMP ..."/"TIME: ..."), so we split on either '\r' or
-            ## '\n' ourselves and echo each fragment with the same
-            ## terminator - otherwise those never hit a newline and get
-            ## buffered/concatenated into one unreadable line. The raw bytes
-            ## are still written to the log file untouched.
+            ## (e.g. per-rank "CMP ..."/"TIME: ..." clock-sync noise). Those
+            ## come from multiple MPI ranks writing to the same merged
+            ## stdout concurrently, so they can't be cleanly reconstructed
+            ## into a single in-place progress line - instead we just drop
+            ## '\r'-terminated fragments from the console entirely and only
+            ## echo real '\n'-terminated lines. The raw bytes (including the
+            ## '\r' noise) are still written to the log file untouched.
             log_path = f"{self.log_path}/io500/{self.runid_base}/{self.fname}"
             with open(log_path, "wb") as log_file:
                 process = subprocess.Popen(
@@ -163,8 +165,10 @@ class IO500Benchmark:
                     if not chunk:
                         break
                     log_file.write(chunk)
-                    if chunk in (b"\n", b"\r"):
-                        print(f"       {buf.decode(errors='replace')}", end=chunk.decode(), flush=True)
+                    if chunk == b"\n":
+                        print(f"       {buf.decode(errors='replace')}", flush=True)
+                        buf = b""
+                    elif chunk == b"\r":
                         buf = b""
                     else:
                         buf += chunk
