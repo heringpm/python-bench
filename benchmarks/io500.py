@@ -1,4 +1,3 @@
-import re
 import subprocess
 from pathlib import Path
 
@@ -139,14 +138,23 @@ class IO500Benchmark:
         if self.dry_run:
             run_cmd(cmd, dry_run=True)
         else:
-            with open(f"{self.log_path}/io500/{self.runid_base}/{self.fname}", "w") as log_file:
-                process = run_cmd(cmd, stdin=subprocess.DEVNULL, stdout=log_file, stderr=log_file)
-
-            with open(f"{self.log_path}/io500/{self.runid_base}/{self.fname}", "r") as f:
-                for line in f:
-                    stripped = line.rstrip("\n")
-                    if re.search(r"\[RESULT\]|SCORE|bandwidth|IOPS", stripped, re.IGNORECASE):
-                        print(f"       {stripped.strip()}")
+            ## io500.sh runs can take a long time, so stream its output to
+            ## the console live (in addition to the log file) rather than
+            ## only printing a summary after it finishes.
+            log_path = f"{self.log_path}/io500/{self.runid_base}/{self.fname}"
+            with open(log_path, "w") as log_file:
+                process = subprocess.Popen(
+                    ["bash", "-c", cmd],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+                for line in process.stdout:
+                    print(f"       {line.rstrip()}")
+                    log_file.write(line)
+                process.wait()
 
     def stop(self):
         print("stopping BM")
