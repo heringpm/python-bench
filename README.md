@@ -263,8 +263,13 @@ skipped rather than running against incomplete data.
 
 ## `io500`
 
-Drives the official [`io500`](https://github.com/IO500/io500) binary via
-`mpirun` (using the global `mpirun_path`/`mpi_conf`, same as `ior`/`mdtest`).
+Drives the official [`io500.sh`](https://github.com/IO500/io500) wrapper
+script, not the raw `io500` binary. `tools.io500` must point at the
+`io500.sh` script — it manages its own MPI launch internally (its
+`io500_mpirun`/`io500_mpiargs` variables) and can do its own directory
+setup/striping in its `setup()` hook, so this suite does **not** wrap it in
+its own `mpirun` call or run any Lustre striping itself; the `mpirun_path`/
+`mpi_conf` globals are not used for `io500`.
 
 **Important:** `io500` statically links its own pinned `ior`/`mdtest`/`pfind`
 source into the `io500` binary at build time (see its `prepare.sh` /
@@ -272,16 +277,18 @@ source into the `io500` binary at build time (see its `prepare.sh` /
 executables at runtime. This means you can't point it at the `ior`/`mdtest`
 binaries already configured under `tools.ior`/`tools.mdtest`; you must build
 `io500` itself (via its own `prepare.sh`) and set `tools.io500` to the
-resulting `io500` binary path. That build only needs to happen once per
-environment/toolchain — the resulting binary is reusable across runs.
+resulting `io500.sh` wrapper script path. That build only needs to happen
+once per environment/toolchain — the resulting script is reusable across
+runs.
 
 Each test generates its own `.ini` file (mirroring `io500`'s config format)
-under `<log_path>/io500/<runid>/<fname>.ini` and launches `io500` against it.
-Config keys under `tests.io500`:
+under `<log_path>/io500/<runid>/<fname>.ini` and launches `io500.sh` against
+it directly (`io500.sh <ini> --timestamp <runid>`). Config keys under
+`tests.io500`:
 
 | Param | Description |
 | --- | --- |
-| `pools` / `stripesize` / `stripecount` | Lustre striping for `io500`'s `datadir` (same pattern as the other tools). |
+| `pools` | Only used to pick the `datadir` path written into the generated ini (`<data_path_root>/io500[/<pools>]`) — no striping is performed by this suite; if striping is needed, add it to `io500.sh`'s own `setup()` hook. |
 | `api` | `io500`'s `[global] api` (e.g. `"POSIX"`). |
 | `drop_caches` | `1` to enable `io500`'s `[global] drop-caches`. |
 | `verbosity` | `io500`'s `[global] verbosity` (1-10). |
@@ -293,6 +300,8 @@ Config keys under `tests.io500`:
 | `run_ior_easy` / `run_mdtest_easy` / `run_find_easy` / `run_ior_hard` / `run_mdtest_hard` / `run_find` | `1`/`0` to toggle each phase's `run =` flag on/off. |
 | `extra_ini` | Escape hatch for any `io500` ini section/key not covered above, e.g. `{"ior-hard": {"collective": "TRUE"}, "mdworkbench": {"run": "TRUE"}}` — merged into (and overrides) the generated sections. |
 | `extra_args` | Extra CLI args appended after the `io500 <ini>` command (e.g. `--list-phases`, `--dry-run` for `io500`'s own dry-run mode). |
+| `remote_ini` | `1`/`true` to bypass all of the striping + ini-generation above entirely and run `io500` against an already-existing, hand-written `.ini` file — useful for official/tuned submission inis you manage outside this suite. When set, every other `tests.io500` key above is ignored (no striping is performed, no ini is generated). |
+| `ini_path` | Path to the pre-built `.ini` file to use when `remote_ini` is set. Required (and only used) in that case. |
 
 `clients`/`ppn` are combined the same way as `ior` (`--host` sliced from the
 machinefile, `--np` = `clients * ppn`) to size the MPI launch that runs

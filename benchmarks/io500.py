@@ -2,26 +2,26 @@ import re
 import subprocess
 from pathlib import Path
 
-from utils.hosts import resolve_hosts
 from utils.shell import run_cmd
 
 
 class IO500Benchmark:
-    """Drives the io500 binary (built via io500's own prepare.sh, which
-    statically links its own pinned ior/mdtest/pfind - it can't reuse
-    externally-built ior/mdtest binaries). This class generates the .ini
-    file io500 reads its config from, then launches it via mpirun."""
+    """Drives io500 via its own io500.sh wrapper script (built via io500's
+    prepare.sh, which statically links its own pinned ior/mdtest/pfind - it
+    can't reuse externally-built ior/mdtest binaries). io500.sh manages its
+    own MPI launch internally (its io500_mpirun/io500_mpiargs variables) and
+    can optionally do its own directory setup/striping in its setup() hook,
+    so tools.io500 should point at that wrapper script, not the raw io500
+    binary. This class just generates the .ini file io500 reads its config
+    from, then invokes io500_path <ini> directly."""
 
-    def __init__(self, params, io500_path, mpirun_path, mpi_conf, data_path_root, log_path, runid_base, fname, machinefile, dry_run=False):
+    def __init__(self, params, io500_path, data_path_root, log_path, runid_base, fname, dry_run=False):
         self.params = params
         self.io500_path = io500_path
-        self.mpirun_path = mpirun_path
-        self.mpi_conf = mpi_conf
         self.data_path_root = data_path_root
         self.log_path = log_path
         self.runid_base = runid_base
         self.fname = fname
-        self.machinefile = machinefile
         self.dry_run = dry_run
 
     def _bool(self, value) -> str:
@@ -86,41 +86,32 @@ class IO500Benchmark:
         return "\n".join(lines)
 
     def run(self):
-        ## DATA POOLS
-        if self.params["pools"] != "default":
-            data_path = Path(f"{self.data_path_root}/io500/{self.params['pools']}")
-            if self.dry_run:
-                print(f"[DRY-RUN] mkdir -p {data_path}")
-            else:
-                data_path.mkdir(parents=True, exist_ok=True)
-            pool_stripe_cmd = f"lfs setstripe -p {self.params['pools']} -S {self.params['stripesize']} -c {self.params['stripecount']} {data_path}"
-            pool_overstripe_cmd = f"lfs setstripe -p {self.params['pools']} -S {self.params['stripesize']} -C {self.params['stripecount']} {data_path}"
-
-            set_stripe_process = run_cmd(pool_stripe_cmd, dry_run=self.dry_run)
-
-            if set_stripe_process.returncode != 0:
-                set_overstripe_process = run_cmd(pool_overstripe_cmd, dry_run=self.dry_run)
-        else:
-            data_path = Path(f"{self.data_path_root}/io500")
-            if self.dry_run:
-                print(f"[DRY-RUN] mkdir -p {data_path}")
-            else:
-                data_path.mkdir(parents=True, exist_ok=True)
-            stripe_cmd = f"lfs setstripe -S {self.params['stripesize']} -c {self.params['stripecount']} {data_path}"
-            overstripe_cmd = f"lfs setstripe -S {self.params['stripesize']} -C {self.params['stripecount']} {data_path}"
-
-            set_stripe_process = run_cmd(stripe_cmd, dry_run=self.dry_run)
-
-            if set_stripe_process.returncode != 0:
-                set_overstripe_process = run_cmd(overstripe_cmd, dry_run=self.dry_run)
-
         results_dir = Path(f"{self.log_path}/io500/{self.runid_base}")
 
-        ## CLIENT HOSTS TO USE
-        client_count = int(self.params["clients"])
-        hosts, _ = resolve_hosts(self.machinefile, client_count)
-        hosts_var = f"--host {','.join(hosts)}"
-        total_ppn = self.params["ppn"] * client_count
+        ## EXTERNAL / PRE-BUILT INI FILE
+        ## When remote_ini is set, skip all of the local striping + ini-section
+        ## generation below entirely and just point io500 at the given ini path.
+        if self.params.get("remote_ini"):
+            ini_path = self.params.get("ini_path")
+            if not ini_path:
+                raise ValueError("io500: remote_ini is set but ini_path is empty")
+            ini_path = Path(ini_path)
+
+            if self.dry_run:
+                print(f"[DRY-RUN] mkdir -p {results_dir}")
+            else:
+                results_dir.mkdir(parents=True, exist_ok=True)
+
+            return self._launch(ini_path, results_dir)
+
+        ## DATA PATH
+        ## Striping/directory setup is left to io500.sh's own setup() hook
+        ## rather than done here - this just computes the path so it can be
+        ## written into the generated ini's [global] datadir.
+        if self.params["pools"] != "default":
+            data_path = Path(f"{self.data_path_root}/io500/{self.params['pools']}")
+        else:
+            data_path = Path(f"{self.data_path_root}/io500")
 
         ## GENERATE THE .ini FILE
         sections = self._build_sections(data_path, results_dir)
@@ -134,11 +125,13 @@ class IO500Benchmark:
             with open(ini_path, "w") as f:
                 f.write(ini_contents)
 
-        cmd = (
-            f'{self.mpirun_path} {hosts_var} '
-            f'{self.mpi_conf} --np {total_ppn} '
-            f'{self.io500_path} {ini_path} --timestamp {self.runid_base}'
-        )
+        self._launch(ini_path, results_dir)
+
+    def _launch(self, ini_path: Path, results_dir: Path):
+        ## io500.sh manages its own MPI launch internally (its
+        ## io500_mpirun/io500_mpiargs variables), so it's invoked directly
+        ## here rather than wrapped in our own mpirun call.
+        cmd = f'{self.io500_path} {ini_path} --timestamp {self.runid_base}'
 
         if self.params.get("extra_args"):
             cmd += f' {self.params["extra_args"]}'

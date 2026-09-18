@@ -391,13 +391,10 @@ def main() -> None:
                     io500 = IO500Benchmark(
                         params=params,
                         io500_path=tool_path,
-                        mpirun_path=mpirun_path,
-                        mpi_conf=mpi_conf,
                         data_path_root=data_path_root,
                         log_path=log_path,
                         runid_base=runid_base,
                         fname=f"{runid}_{file_stamp}_{test}_io500.log",
-                        machinefile=machinefile,
                         dry_run=args.dry_run
                     )
                     io500.run()

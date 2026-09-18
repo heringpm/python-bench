@@ -192,7 +192,9 @@
         "run_mdtest_hard":        [1],
         "run_find":               [1],
         "extra_ini":              [{}],
-        "extra_args":             [""]
+        "extra_args":             [""],
+        "remote_ini":             [false],
+        "ini_path":               [""]
       }
     }
 
