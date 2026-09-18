@@ -141,19 +141,35 @@ class IO500Benchmark:
             ## io500.sh runs can take a long time, so stream its output to
             ## the console live (in addition to the log file) rather than
             ## only printing a summary after it finishes.
+            ##
+            ## io500 uses '\r' (not '\n') for its in-place progress updates
+            ## (e.g. "CMP ..."/"TIME: ..."), so we split on either '\r' or
+            ## '\n' ourselves and echo each fragment with the same
+            ## terminator - otherwise those never hit a newline and get
+            ## buffered/concatenated into one unreadable line. The raw bytes
+            ## are still written to the log file untouched.
             log_path = f"{self.log_path}/io500/{self.runid_base}/{self.fname}"
-            with open(log_path, "w") as log_file:
+            with open(log_path, "wb") as log_file:
                 process = subprocess.Popen(
                     ["bash", "-c", cmd],
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
+                    bufsize=0,
                 )
-                for line in process.stdout:
-                    print(f"       {line.rstrip()}")
-                    log_file.write(line)
+                buf = b""
+                while True:
+                    chunk = process.stdout.read(1)
+                    if not chunk:
+                        break
+                    log_file.write(chunk)
+                    if chunk in (b"\n", b"\r"):
+                        print(f"       {buf.decode(errors='replace')}", end=chunk.decode(), flush=True)
+                        buf = b""
+                    else:
+                        buf += chunk
+                if buf:
+                    print(f"       {buf.decode(errors='replace')}")
                 process.wait()
 
     def stop(self):
