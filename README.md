@@ -104,11 +104,14 @@ Runs via `mpirun`. Config keys under `tests.ior`:
 | `randomoffset` | `1` for random-offset I/O (IOR `-z`); combine with `file_layout: 1` to sequentially write the file first (mirrored write→random-read pattern). |
 | `fileperproc` | `1` for one file per process (IOR `-F`). |
 | `keep_files` | `1` to keep files after the run (IOR `-k`) instead of deleting them. |
-| `operation` | `"write"` or `"read"`. |
+| `operation` | `"write"`, `"read"`, or `"mixed"` (write+read combined into a single `ior` invocation, IOR `-w -r`). |
 
-`--delete-before-write` cleans the data path after a `read` test completes
-(so the next `write` test starts fresh), and also before the file-layout
-write pass if `randomoffset`+`file_layout` are both set.
+`--delete-before-write` cleans the data path after a `read` or `mixed` test
+completes (so the next `write` test starts fresh), and also before the
+file-layout write pass if `randomoffset`+`file_layout` are both set.
+`"mixed"` writes the file itself as part of the same invocation, so it never
+uses the separate `file_layout` pre-pass that standalone `"read"` does even
+if `file_layout: 1` is set.
 
 ## `mdtest`
 

@@ -70,6 +70,10 @@ class IORBenchmark:
             run_options += " -w "
         elif self.params["operation"] == "read":
             run_options += " -r "
+        elif self.params["operation"] == "mixed":
+            ## Combined write+read in a single ior invocation instead of
+            ## running write and read as separate invocations.
+            run_options += " -w -r "
 
         ## KEEP FILES
         if self.params["keep_files"] == 1:
@@ -85,6 +89,9 @@ class IORBenchmark:
 
         ## RANDOM
         if self.params["randomoffset"] == 1:
+            ## "mixed" runs write the file themselves as part of the same
+            ## invocation, so they never need the separate sequential
+            ## file-layout pre-pass that a standalone "read" does.
             if self.params["operation"] == "read" and self.params["file_layout"]:
                 ### Run file layout
 
@@ -155,7 +162,7 @@ class IORBenchmark:
                         cols = line.split()
                         print(f"       {cols[0]} {cols[1]} {cols[2]} {cols[3]}")
 
-        if self.params["operation"] == "read":
+        if self.params["operation"] in ("read", "mixed"):
             ## Delete previous run data before running write if 'deletefiles' is true
             if self.deletefiles:
                 print("Cleaning up datapath from previous runs...")
