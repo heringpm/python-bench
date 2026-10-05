@@ -139,24 +139,35 @@ IOR_METRIC_COLUMNS = list(IOR_SUMMARY_COLUMNS.values())
 
 
 def parse_ior_log(log_path: Path) -> dict:
-    """Parse an IOR log file and extract metrics from the summary table."""
+    """
+    Parse an IOR log file and extract metrics from the summary table.
+
+    Returns a dict keyed by operation ("write"/"read") mapping to that
+    operation's metrics dict. A standard (non-mixed) run will only have a
+    single key present. A "mixed" run (-w -r in the same invocation)
+    produces one row per operation in the summary table, so both "write"
+    and "read" keys will be present.
+    """
     lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    metrics = {}
+    metrics_by_op = {}
 
     for i, line in enumerate(lines):
         if line.strip().startswith("Operation"):
             header = line.split()
             for j in range(i + 1, len(lines)):
                 data_line = lines[j].strip()
-                if data_line and not data_line.startswith("Finished"):
-                    data = data_line.split()
-                    row = dict(zip(header, data))
-                    for src_col, out_col in IOR_SUMMARY_COLUMNS.items():
-                        metrics[out_col] = row.get(src_col, "")
+                if not data_line or data_line.startswith("Finished"):
                     break
+                data = data_line.split()
+                row = dict(zip(header, data))
+                operation = row.get("Operation", "").lower()
+                metrics = {}
+                for src_col, out_col in IOR_SUMMARY_COLUMNS.items():
+                    metrics[out_col] = row.get(src_col, "")
+                metrics_by_op[operation] = metrics
             break
 
-    return metrics
+    return metrics_by_op
 
 
 # ---------------------------------------------------------------------------
@@ -464,7 +475,37 @@ def generate_report(run_dir: Path, config: dict, tool: str) -> None:
     run_id = run_dir.name
 
     for log_file in log_files:
-        params  = parse_test_name(log_file.name, tool)
+        params = parse_test_name(log_file.name, tool)
+
+        if tool == "ior":
+            # IOR returns a dict keyed by operation ("write"/"read"). A
+            # "mixed" run (-w -r in one invocation) has both keys present,
+            # so it is expanded into one output row per operation, just
+            # like a standard write-only or read-only run.
+            metrics_by_op = parse_ior_log(log_file)
+
+            if not metrics_by_op:
+                print(f"  WARNING: no summary data found in {log_file.name}", file=sys.stderr)
+                continue
+
+            for operation, metrics in metrics_by_op.items():
+                row = {"run_id": run_id}
+
+                for col in filename_params:
+                    row[col] = params.get(col, "")
+
+                for col in extra_config_params:
+                    val = config_params.get(col, [""])[0]
+                    row[col] = val
+
+                for col in metric_columns:
+                    row[col] = metrics.get(col, "")
+
+                row["operation"] = operation
+
+                rows.append(row)
+            continue
+
         metrics = log_parser(log_file)
 
         if not metrics:
