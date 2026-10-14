@@ -42,11 +42,12 @@ def load_config(config_path: Path) -> dict:
 #
 # mdtest filename format:
 # <runid>_<datestamp>_mdtest.16-clients.96-ppn.default-pool.1m-stripesize.1-stripecount.
-#   5000-objects.1-branching.0-depth.0-uniquedir.0-itemsperdir.1-directio_mdtest.log
+#   0-DOM.5000-objects.1-branching.0-depth.0-byteswrite.0-uniquedir.0-itemsperdir.
+#   1-directio.off-checksums_mdtest.log
 #
 # fio filename format:
 # <runid>_<datestamp>_fio.16-clients.4-ppn.default-pool.16m-stripesize.1-stripecount.
-#   8k-blocksize.10g-filesize.8-iodepth.1-directio.write-operation_fio.log
+#   8k-blocksize.10g-filesize.8-iodepth.1-directio.off-checksums.write-operation_fio.log
 # ---------------------------------------------------------------------------
 
 IOR_FILENAME_PARAM_COLUMNS = [
@@ -73,12 +74,15 @@ MDTEST_FILENAME_PARAM_COLUMNS = [
     "pools",
     "stripesize",
     "stripecount",
+    "DOM",
     "objects",
     "branching",
     "depth",
+    "byteswrite",
     "uniquedir",
     "itemsperdir",
     "directio",
+    "checksums",
 ]
 
 FIO_FILENAME_PARAM_COLUMNS = [
