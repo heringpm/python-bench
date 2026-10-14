@@ -92,6 +92,7 @@ FIO_FILENAME_PARAM_COLUMNS = [
     "filesize",
     "iodepth",
     "directio",
+    "checksums",
     "operation",
 ]
 

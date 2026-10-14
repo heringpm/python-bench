@@ -5,6 +5,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import argparse
 import time
@@ -120,7 +121,7 @@ def _add_test(tests: dict, name: str, cfg: dict) -> None:
 def _fio_combo_name(cfg: dict) -> str:
     return (
         f"{cfg['clients']}-clients.{cfg['ppn']}-ppn.{cfg['pools']}-pool.{cfg['stripesize']}-stripesize.{cfg['stripecount']}-stripecount.{cfg['blocksize']}-blocksize."
-        f"{cfg['filesize']}-filesize.{cfg['iodepth']}-iodepth.{cfg['directio']}-directio.{cfg['operation']}-operation"
+        f"{cfg['filesize']}-filesize.{cfg['iodepth']}-iodepth.{cfg['directio']}-directio.{cfg['checksums']}-checksums.{cfg['operation']}-operation"
     )
 
 def generate_tool_tests(params: dict, tool) -> dict:
@@ -222,6 +223,30 @@ def test_prep(args):
         process = run_cmd(server_cache_cmd, dry_run=args.dry_run)
 
 
+def snapshot_tuning_files(log_path, tool, runid_base, dry_run=False):
+    """Copy the tuning scripts referenced in config.json's "tuning_files"
+    into the run's log directory. The scripts can be edited over time, so
+    this keeps a record of exactly what tuning logic was in effect for
+    this specific run in case it needs to be referenced or reverted to
+    later."""
+    dest_dir = Path(f"{log_path}/{tool}/{runid_base}/tuning_scripts")
+
+    if dry_run:
+        print(f"[DRY-RUN] mkdir -p {dest_dir}")
+    else:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+    for src in tuning_files.values():
+        src_path = Path(src)
+        if dry_run:
+            print(f"[DRY-RUN] cp {src_path} {dest_dir}/{src_path.name}")
+            continue
+        if src_path.exists():
+            shutil.copy2(src_path, dest_dir / src_path.name)
+        else:
+            print(f"WARNING: tuning file not found, skipping snapshot: {src_path}")
+
+
 def tune_clients(params, dry_run=False, target_machinefile=None):
     checksums = params["checksums"]
     if checksums == "off":
@@ -258,6 +283,14 @@ def main() -> None:
         # fio_parallel's logging setup there too, keeping both job logs
         # alongside regular fio runs.
         setup_logging(log_path, "fio" if tool == "fio_parallel" else tool)
+
+        if not args.no_client_tune:
+            snapshot_tuning_files(
+                log_path,
+                "fio" if tool == "fio_parallel" else tool,
+                runid_base,
+                dry_run=args.dry_run
+            )
 
         ### Setup some progress messaging
         total = len(all_tool_tests)
