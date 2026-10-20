@@ -95,7 +95,10 @@ class IO500Benchmark:
             ini_path = self.params.get("ini_path")
             if not ini_path:
                 raise ValueError("io500: remote_ini is set but ini_path is empty")
-            ini_path = Path(ini_path)
+            # Resolve to absolute - io500.sh is run with its own install
+            # directory as cwd (see _launch), so a relative ini_path here
+            # would otherwise be looked up in the wrong place.
+            ini_path = Path(ini_path).resolve()
 
             if self.dry_run:
                 print(f"[DRY-RUN] mkdir -p {results_dir}")
@@ -131,13 +134,21 @@ class IO500Benchmark:
         ## io500.sh manages its own MPI launch internally (its
         ## io500_mpirun/io500_mpiargs variables), so it's invoked directly
         ## here rather than wrapped in our own mpirun call.
+        ##
+        ## io500.sh resolves its sibling binaries (ior, mdtest, pfind, the
+        ## io500 binary itself, etc.) via relative paths, so it must be run
+        ## with its own install directory as the working directory - not
+        ## wherever this script happens to be launched from. Without this,
+        ## those relative lookups resolve against the wrong directory and
+        ## execve fails with "Permission denied" (or "No such file").
+        io500_dir = Path(self.io500_path).resolve().parent
         cmd = f'{self.io500_path} {ini_path} --timestamp {self.runid_base}'
 
         if self.params.get("extra_args"):
             cmd += f' {self.params["extra_args"]}'
 
         if self.dry_run:
-            run_cmd(cmd, dry_run=True)
+            run_cmd(cmd, dry_run=True, cwd=io500_dir)
         else:
             ## io500.sh runs can take a long time, so stream its output to
             ## the console live (in addition to the log file) rather than
@@ -152,6 +163,7 @@ class IO500Benchmark:
             with open(log_path, "wb") as log_file:
                 process = subprocess.Popen(
                     ["bash", "-c", cmd],
+                    cwd=io500_dir,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
