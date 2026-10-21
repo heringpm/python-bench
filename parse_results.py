@@ -259,7 +259,24 @@ FIO_METRIC_COLUMNS = [
     "lat_max(usec)",
     "lat_avg(usec)",
     "lat_stdev",
+    "clat_p50(usec)",
+    "clat_p90(usec)",
+    "clat_p95(usec)",
+    "clat_p99(usec)",
+    "clat_p99.9(usec)",
+    "clat_p99.99(usec)",
 ]
+
+# Percentile labels fio prints in the "clat percentiles (<unit>):" block,
+# mapped to the output column suffix used above.
+FIO_CLAT_PERCENTILES = {
+    "50.00": "p50",
+    "90.00": "p90",
+    "95.00": "p95",
+    "99.00": "p99",
+    "99.90": "p99.9",
+    "99.99": "p99.99",
+}
 
 
 def detect_fio_error(lines: list) -> str:
@@ -345,6 +362,24 @@ def to_plain_number(value_str: str) -> str:
     return f"{val:.0f}" if val == int(val) else f"{val:.2f}"
 
 
+def to_usec(value: str, unit: str) -> str:
+    """Convert a plain numeric latency value in the given fio time unit
+    (nsec/usec/msec) to a plain usec number string."""
+    try:
+        val = float(value)
+    except ValueError:
+        return value
+
+    unit = unit.lower()
+    if unit == "nsec":
+        val /= 1000
+    elif unit == "msec":
+        val *= 1000
+    # usec: no scaling needed
+
+    return f"{val:.2f}" if val != int(val) else f"{val:.0f}"
+
+
 def _parse_kv_line(line: str) -> dict:
     """Parse a line of key=value pairs separated by commas into a dict."""
     result = {}
@@ -365,6 +400,8 @@ def parse_fio_log(log_path: Path) -> dict:
     metrics = {}
 
     in_block = False
+    in_percentile_block = False
+    percentile_unit = "usec"
 
     for line in lines:
         stripped = line.strip()
@@ -445,6 +482,30 @@ def parse_fio_log(log_path: Path) -> dict:
                 metrics["lat_avg(usec)"] = kv.get("avg", "")
                 metrics["lat_stdev"]     = kv.get("stdev", "")
             continue
+
+        # clat percentile block, e.g.:
+        #   clat percentiles (msec):
+        #    |  1.00th=[   21],  5.00th=[   26], 10.00th=[   29], 20.00th=[   34],
+        #    | 30.00th=[   39], ... 99.00th=[  103], 99.50th=[  112], ...
+        #    | 99.99th=[  165]
+        # The block is introduced by a "clat percentiles (<unit>):" header and
+        # continues over following lines that start with "|", each containing
+        # one or more "<pct>th=[ <val>]" entries.
+        pct_header = re.match(r"clat percentiles \(([^)]+)\):", stripped)
+        if pct_header:
+            in_percentile_block = True
+            percentile_unit = pct_header.group(1).strip()
+            continue
+
+        if in_percentile_block:
+            if stripped.startswith("|"):
+                for pct_str, val_str in re.findall(r"([\d.]+)th=\[\s*([\d.]+)\]", stripped):
+                    col_suffix = FIO_CLAT_PERCENTILES.get(pct_str)
+                    if col_suffix:
+                        metrics[f"clat_{col_suffix}(usec)"] = to_usec(val_str, percentile_unit)
+                continue
+            else:
+                in_percentile_block = False
 
         # end of block on cpu line
         if stripped.startswith("cpu"):
