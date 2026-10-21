@@ -317,8 +317,18 @@ def parse_fio_log(log_path: Path) -> dict:
     for line in lines:
         stripped = line.strip()
 
-        # entry point: the aggregate summary block
-        if stripped.startswith("All clients:"):
+        # entry point: the aggregate summary block.
+        # fio --client (distributed) runs report an "All clients:" header
+        # before the aggregate read/write/bw/iops/lat lines. Single-host
+        # runs have no such header - the per-group summary line
+        # ("fiojob: (groupid=0, jobs=16): err= 0: pid=...") is immediately
+        # followed by those same aggregate lines, so treat it as an
+        # equivalent entry point. (Not to be confused with the per-job
+        # startup line, which is prefixed with the hostname, e.g.
+        # "<c214.maas> fiojob: (g=0): rw=read, ...".)
+        if stripped.startswith("All clients:") or (
+            stripped.startswith("fiojob:") and "groupid=" in stripped
+        ):
             in_block = True
             continue
 
@@ -369,13 +379,19 @@ def parse_fio_log(log_path: Path) -> dict:
             continue
 
         # aggregate lat line: "lat (usec): min=94, max=531206, avg=1446.19, stdev=4084.72"
+        # note: fio also prints a "lat (msec)   : 2=0.02%, 4=99.97%, ..."
+        # percentile-bucket distribution line later in the same block, which
+        # also starts with "lat (" but has no min/max/avg/stdev keys - only
+        # overwrite the metrics when this is actually the min/max/avg/stdev
+        # line, so that distribution line doesn't blank out the real values.
         if stripped.startswith("lat ("):
             after_colon = stripped.split(":", 1)[1] if ":" in stripped else stripped
             kv = _parse_kv_line(after_colon)
-            metrics["lat_min(usec)"] = kv.get("min", "")
-            metrics["lat_max(usec)"] = kv.get("max", "")
-            metrics["lat_avg(usec)"] = kv.get("avg", "")
-            metrics["lat_stdev"]     = kv.get("stdev", "")
+            if "min" in kv:
+                metrics["lat_min(usec)"] = kv.get("min", "")
+                metrics["lat_max(usec)"] = kv.get("max", "")
+                metrics["lat_avg(usec)"] = kv.get("avg", "")
+                metrics["lat_stdev"]     = kv.get("stdev", "")
             continue
 
         # end of block on cpu line
