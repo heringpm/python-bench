@@ -519,7 +519,7 @@ def generate_report(run_dir: Path, config: dict, tool: str) -> None:
 
     extra_config_params = [
         k for k in config_params
-        if k not in log_captured
+        if k.lower() not in log_captured
         and k not in skip_extra
     ]
 
