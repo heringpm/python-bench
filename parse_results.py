@@ -324,6 +324,27 @@ def to_mib(value_str: str) -> str:
     return f"{val:.2f}"
 
 
+def to_plain_number(value_str: str) -> str:
+    """
+    Convert a fio human-readable rate string (e.g. "353k", "12.7k", "1001k",
+    "3m") to a plain decimal number string, so CSV columns like IOPS_summary
+    sort/graph correctly instead of being treated as text. fio formats these
+    counts with decimal (not binary) suffixes: k=1e3, m=1e6, g=1e9.
+    """
+    value_str = value_str.strip()
+    m = re.match(r"([\d.]+)([KkMmGgTt])?$", value_str)
+    if not m:
+        return value_str
+
+    val  = float(m.group(1))
+    unit = (m.group(2) or "").lower()
+
+    multipliers = {"k": 1e3, "m": 1e6, "g": 1e9, "t": 1e12}
+    val = round(val * multipliers.get(unit, 1), 2)
+
+    return f"{val:.0f}" if val == int(val) else f"{val:.2f}"
+
+
 def _parse_kv_line(line: str) -> dict:
     """Parse a line of key=value pairs separated by commas into a dict."""
     result = {}
@@ -370,7 +391,7 @@ def parse_fio_log(log_path: Path) -> dict:
         m = re.match(r"(read|write|randread|randwrite|randrw):\s+IOPS=(\S+),\s+BW=(\S+)", stripped)
         if m:
             metrics["operation"]         = m.group(1)
-            metrics["IOPS_summary"]      = m.group(2)
+            metrics["IOPS_summary"]      = to_plain_number(m.group(2))
             metrics["BW_summary(MiB/s)"] = to_mib(m.group(3))
             continue
 
