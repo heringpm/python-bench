@@ -497,6 +497,27 @@ TOOL_CONFIG = {
 }
 
 
+def sanitize_csv_value(val):
+    """
+    Guard against Excel/Sheets interpreting a cell as a formula.
+
+    Any value whose text begins with =, +, -, or @ is treated as a formula
+    by Excel on open/paste (e.g. a config flag like "-v" becomes a bogus
+    formula and renders as "#NAME?"). Genuine negative numbers are left
+    untouched since they're safe and meaningful; everything else gets a
+    leading apostrophe, which Excel recognizes as a "force text" marker
+    and strips from the displayed value.
+    """
+    s = str(val)
+    if not s or s[0] not in "=+-@":
+        return val
+    try:
+        float(s)
+        return val
+    except ValueError:
+        return "'" + s
+
+
 def generate_report(run_dir: Path, config: dict, tool: str) -> None:
     log_files = sorted(run_dir.glob("*.log"))
 
@@ -585,7 +606,7 @@ def generate_report(run_dir: Path, config: dict, tool: str) -> None:
     writer = csv.writer(sys.stdout)
     writer.writerow(all_columns)
     for row in rows:
-        writer.writerow([row.get(col, "") for col in all_columns])
+        writer.writerow([sanitize_csv_value(row.get(col, "")) for col in all_columns])
 
 
 # ---------------------------------------------------------------------------
