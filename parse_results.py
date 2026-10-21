@@ -244,6 +244,7 @@ def parse_mdtest_log(log_path: Path) -> dict:
 
 FIO_METRIC_COLUMNS = [
     "operation",
+    "error",
     "BW_summary(MiB/s)",
     "IOPS_summary",
     "BW_min(MiB/s)",
@@ -259,6 +260,36 @@ FIO_METRIC_COLUMNS = [
     "lat_avg(usec)",
     "lat_stdev",
 ]
+
+
+def detect_fio_error(lines: list) -> str:
+    """
+    Scan a fio log for indicators that the job errored out before running
+    cleanly to completion (e.g. a missing fscrypt key, an io_u error such
+    as misaligned/invalid I/O, or the job process exiting nonzero). When
+    this happens fio often skips printing some/all of its aggregate
+    bw/iops/lat stat lines, leaving those CSV columns blank - this makes
+    that distinguishable from a genuinely clean run at a glance.
+
+    Returns a short description of the first error found, or "" if the
+    log looks clean.
+    """
+    # Prefer the most specific message, e.g.:
+    #   "...err=126/file:filesetup.c:174, func=open, error=Required key not available"
+    #   "fiojob: (groupid=0, jobs=16): err=22 (file:io_u.c:1889, func=io_u error, error=Invalid argument): pid=..."
+    for line in lines:
+        m = re.search(r"\berror=([^,:)]+)", line)
+        if m:
+            return m.group(1).strip()
+
+    # Fall back to a nonzero process exit code, e.g.:
+    #   "client <c214>: exited with error 16"
+    for line in lines:
+        m = re.search(r"exited with error (\d+)", line)
+        if m and m.group(1) != "0":
+            return f"exited with error {m.group(1)}"
+
+    return ""
 
 
 def to_mib(value_str: str) -> str:
@@ -397,6 +428,8 @@ def parse_fio_log(log_path: Path) -> dict:
         # end of block on cpu line
         if stripped.startswith("cpu"):
             break
+
+    metrics["error"] = detect_fio_error(lines)
 
     return metrics
 
