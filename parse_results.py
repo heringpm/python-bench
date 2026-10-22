@@ -551,6 +551,126 @@ def get_sort_key(row: dict, config_params: dict, sort_first: list) -> tuple:
 
 
 # ---------------------------------------------------------------------------
+# Client-side stats log parsing — targets *.clientstats files produced by
+# `clush --machinefile <mf> "sar -u -P ALL -q -r -n DEV <interval>"`
+# (see monitoring.py ClientMonitoring). Output is a continuous time series
+# across every client host, prefixed per-line with "<hostname>: ". This is
+# condensed down into a handful of avg/max summary columns per test so it
+# can sit alongside the normal benchmark metrics in the same CSV row.
+# ---------------------------------------------------------------------------
+
+CLIENT_STATS_METRIC_COLUMNS = [
+    "client_cpu_user_avg(%)",
+    "client_cpu_user_max(%)",
+    "client_cpu_system_avg(%)",
+    "client_cpu_system_max(%)",
+    "client_cpu_iowait_avg(%)",
+    "client_cpu_iowait_max(%)",
+    "client_loadavg_1min_max",
+    "client_mem_used_avg(%)",
+    "client_mem_used_max(%)",
+    "client_net_ifutil_max(%)",
+]
+
+# Host-prefix added by clush, e.g. "c214: 06:00:31 PM     all      0.38 ..."
+_HOST_PREFIX_RE = re.compile(r"^\S+:\s?(.*)$")
+
+# sar -u -P ALL: "06:00:31 PM     all      0.38      0.00      0.06      0.06      0.00     99.50"
+_CPU_ALL_RE = re.compile(
+    r"^\S+\s+[AP]M\s+all\s+([\d.]+)\s+[\d.]+\s+([\d.]+)\s+([\d.]+)\s+[\d.]+\s+[\d.]+\s*$"
+)
+# sar -q: "06:00:38 PM         2       742      0.23      0.15      0.06         0"
+_LOADAVG_RE = re.compile(
+    r"^\S+\s+[AP]M\s+\d+\s+\d+\s+([\d.]+)\s+[\d.]+\s+[\d.]+\s+\d+\s*$"
+)
+# sar -r: "06:00:38 PM 364075892 388469328   2839564      0.72    759768  21493484   3708540      0.92   3930608  19678140         4"
+_MEM_RE = re.compile(
+    r"^\S+\s+[AP]M\s+\d+\s+\d+\s+\d+\s+([\d.]+)\s+\d+\s+\d+\s+\d+\s+[\d.]+\s+\d+\s+\d+\s+\d+\s*$"
+)
+# sar -n DEV: "06:00:38 PM   eno1np0    154.00   1356.00     10.98   1978.08      0.00      0.00      0.00      1.62"
+_NET_RE = re.compile(
+    r"^\S+\s+[AP]M\s+(\S+)\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+([\d.]+)\s*$"
+)
+
+
+def get_clientstats_path(log_file: Path, tool: str) -> "Path | None":
+    """
+    Map a benchmark log file (e.g. "<runid>_<ts>_<test>_fio.log") to its
+    matching client-stats sidecar file, if one was captured for that test
+    (e.g. "<runid>_<ts>_<test>_log.out.clientstats" - see main.py, where
+    both share the same "<test>" parameter string).
+    """
+    suffix = f"_{tool}.log"
+    name = log_file.name
+    base = name[: -len(suffix)] if name.endswith(suffix) else log_file.stem
+    candidate = log_file.parent / f"{base}_log.out.clientstats"
+    return candidate if candidate.exists() else None
+
+
+def parse_clientstats_log(log_path: Path) -> dict:
+    """
+    Parse a *.clientstats file into avg/max summary metrics across every
+    sample and every client host in the file. Returns {} if nothing
+    recognizable was found (e.g. clush/ssh failed to reach any host).
+    """
+    lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+    cpu_user, cpu_system, cpu_iowait = [], [], []
+    loadavg1, mem_used, net_ifutil = [], [], []
+
+    for raw_line in lines:
+        m = _HOST_PREFIX_RE.match(raw_line)
+        line = m.group(1) if m else raw_line
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        m = _CPU_ALL_RE.match(stripped)
+        if m:
+            cpu_user.append(float(m.group(1)))
+            cpu_system.append(float(m.group(2)))
+            cpu_iowait.append(float(m.group(3)))
+            continue
+
+        m = _LOADAVG_RE.match(stripped)
+        if m:
+            loadavg1.append(float(m.group(1)))
+            continue
+
+        m = _MEM_RE.match(stripped)
+        if m:
+            mem_used.append(float(m.group(1)))
+            continue
+
+        m = _NET_RE.match(stripped)
+        if m and m.group(1).lower() not in ("iface", "lo"):
+            net_ifutil.append(float(m.group(2)))
+            continue
+
+    if not any((cpu_user, loadavg1, mem_used, net_ifutil)):
+        return {}
+
+    def avg(vals):
+        return round(sum(vals) / len(vals), 2) if vals else ""
+
+    def mx(vals):
+        return max(vals) if vals else ""
+
+    return {
+        "client_cpu_user_avg(%)":    avg(cpu_user),
+        "client_cpu_user_max(%)":    mx(cpu_user),
+        "client_cpu_system_avg(%)":  avg(cpu_system),
+        "client_cpu_system_max(%)":  mx(cpu_system),
+        "client_cpu_iowait_avg(%)":  avg(cpu_iowait),
+        "client_cpu_iowait_max(%)":  mx(cpu_iowait),
+        "client_loadavg_1min_max":   mx(loadavg1),
+        "client_mem_used_avg(%)":    avg(mem_used),
+        "client_mem_used_max(%)":    mx(mem_used),
+        "client_net_ifutil_max(%)":  mx(net_ifutil),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Report generation
 # ---------------------------------------------------------------------------
 
@@ -626,13 +746,16 @@ def generate_report(run_dir: Path, config: dict, tool: str) -> None:
         and k not in skip_extra
     ]
 
-    all_columns = ["run_id"] + filename_params + extra_config_params + metric_columns
+    all_columns = ["run_id"] + filename_params + extra_config_params + metric_columns + CLIENT_STATS_METRIC_COLUMNS
 
     rows = []
     run_id = run_dir.name
 
     for log_file in log_files:
         params = parse_test_name(log_file.name, tool)
+
+        clientstats_path = get_clientstats_path(log_file, tool)
+        clientstats = parse_clientstats_log(clientstats_path) if clientstats_path else {}
 
         if tool == "ior":
             # IOR returns a dict keyed by operation ("write"/"read"). A
@@ -658,6 +781,9 @@ def generate_report(run_dir: Path, config: dict, tool: str) -> None:
                 for col in metric_columns:
                     row[col] = metrics.get(col, "")
 
+                for col in CLIENT_STATS_METRIC_COLUMNS:
+                    row[col] = clientstats.get(col, "")
+
                 row["operation"] = operation
 
                 rows.append(row)
@@ -680,6 +806,9 @@ def generate_report(run_dir: Path, config: dict, tool: str) -> None:
 
         for col in metric_columns:
             row[col] = metrics.get(col, "")
+
+        for col in CLIENT_STATS_METRIC_COLUMNS:
+            row[col] = clientstats.get(col, "")
 
         rows.append(row)
 
