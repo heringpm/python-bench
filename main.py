@@ -11,7 +11,7 @@ import argparse
 import time
 from pathlib import Path
 from typing import Any, Union
-from monitoring import SFAMonitoring
+from monitoring import SFAMonitoring, ClientMonitoring
 from benchmarks.ior import IORBenchmark
 from benchmarks.mdtest import MDTestBenchmark
 from benchmarks.fio import FIOBenchmark
@@ -52,6 +52,8 @@ def read_arguments():
     parser.add_argument("--drop-server-cache", action="store_true", help="Drop cache on servers before tests")
     parser.add_argument("--delete-before-write", action="store_true", help="Delete old files before writing new test files")
     parser.add_argument("--no-client-tune", action="store_true", help="Dont run any client tuning")
+    parser.add_argument("--client-stats", action="store_true", help="Collect client-side CPU/load/memory/network stats (via sar) for the duration of each test")
+    parser.add_argument("--client-stats-interval", type=int, default=5, help="Sampling interval in seconds for --client-stats (default: 5)")
     parser.add_argument("--dry-run", action="store_true", help="Print all commands that would run for the full config without executing them")
 
     args = parser.parse_args()
@@ -308,6 +310,7 @@ def main() -> None:
             print("Starting elbencho service on clients...")
             run_cmd(f"clush --machinefile {machinefile} {tool_path} --service", dry_run=args.dry_run)
 
+        client_monitoring = None
         try:
             for test, params in all_tool_tests.items():
                 print(f"  ▶  [{completed + 1}/{total}] {test}")
@@ -321,6 +324,27 @@ def main() -> None:
                     dry_run=args.dry_run
                 )
                 monitoring.start()
+
+                ### Startup client-side stats monitoring (opt-in, --client-stats)
+                client_monitoring = None
+                if args.client_stats:
+                    test_machinefile = machinefile
+                    if tool == "fio_parallel":
+                        # Prefer job1's machinefile override (if any); job2's
+                        # client-stats, if it targets a different set of
+                        # hosts, isn't covered here to keep this simple.
+                        test_machinefile = params["job1"].get("machinefile") or machinefile
+                    client_monitoring = ClientMonitoring(
+                        machinefile=test_machinefile,
+                        log_path=log_path,
+                        runid_base=runid_base,
+                        tool=tool,
+                        fname=f"{runid}_{file_stamp}_{test}_log.out",
+                        interval=args.client_stats_interval,
+                        dry_run=args.dry_run
+                    )
+                    client_monitoring.start()
+
                 ### PREP FILESYSTEM FOR TEST
                 test_prep(args)
 
@@ -435,6 +459,8 @@ def main() -> None:
                 completed += 1
                 print(f"  ✓  [{completed}/{total}] Done\n")
                 monitoring.stop()
+                if client_monitoring is not None:
+                    client_monitoring.stop()
         except KeyboardInterrupt:
             interrupted = True
 
@@ -450,6 +476,8 @@ def main() -> None:
 
 
             monitoring.stop()
+            if client_monitoring is not None:
+                client_monitoring.stop()
 
             if tool == "elbencho":
                 print("Stopping elbencho service on clients...")
