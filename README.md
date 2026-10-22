@@ -24,6 +24,10 @@ Options:
 | `--delete-before-write` | Delete old test data before writing new files (per test, where applicable — see each tool's `file_layout`/cleanup notes below). |
 | `--standard` | Shortcut for the usual pre-test prep: enables `--fstrim`, `--drop-client-cache`, `--drop-server-cache`, and `--delete-before-write` together. |
 | `--no-client-tune` | Skip running the client tuning scripts (`tune_checksums`/`tune_no_checksums`) before each test. |
+| `--client-stats` | Collect client-side CPU/load/memory/network stats (via `sar` over `clush`) for the duration of each test, logged to `<fname>.clientstats` next to the test's other logs. |
+| `--client-stats-interval` | Sampling interval in seconds for `--client-stats` (default: 5). |
+| `--perf-profile` | Profile each test on clients with `perf record` (system-wide, with call graphs) for flamegraph generation. Intended for a single job, not a full sweep, since it adds overhead and large output files. Results (`.perf.script` per host, plus `.svg` flamegraphs if `stackcollapse-perf.pl`/`flamegraph.pl` are on `PATH`) are copied back into the run's log directory. |
+| `--perf-profile-frequency` | Sampling frequency in Hz for `--perf-profile` (default: 99). |
 
 Copy `config.template.json` to `config.json` and edit it for your environment.
 Every entry under `tests.<tool>` is a dict of `param: [list of values]`; the
