@@ -51,12 +51,19 @@ def read_arguments():
     parser.add_argument("--drop-client-cache", action="store_true", help="Drop cache on clients before tests")
     parser.add_argument("--drop-server-cache", action="store_true", help="Drop cache on servers before tests")
     parser.add_argument("--delete-before-write", action="store_true", help="Delete old files before writing new test files")
+    parser.add_argument("--standard", action="store_true", help="Shortcut for the usual pre-test prep: --fstrim --drop-client-cache --drop-server-cache --delete-before-write")
     parser.add_argument("--no-client-tune", action="store_true", help="Dont run any client tuning")
     parser.add_argument("--client-stats", action="store_true", help="Collect client-side CPU/load/memory/network stats (via sar) for the duration of each test")
     parser.add_argument("--client-stats-interval", type=int, default=5, help="Sampling interval in seconds for --client-stats (default: 5)")
     parser.add_argument("--dry-run", action="store_true", help="Print all commands that would run for the full config without executing them")
 
     args = parser.parse_args()
+
+    if args.standard:
+        args.fstrim = True
+        args.drop_client_cache = True
+        args.drop_server_cache = True
+        args.delete_before_write = True
 
     return args
 

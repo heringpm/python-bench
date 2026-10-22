@@ -22,6 +22,7 @@ Options:
 | `--drop-client-cache` | Drop page cache on all clients before testing. |
 | `--drop-server-cache` | Drop page cache on all appliance/server nodes before testing. |
 | `--delete-before-write` | Delete old test data before writing new files (per test, where applicable — see each tool's `file_layout`/cleanup notes below). |
+| `--standard` | Shortcut for the usual pre-test prep: enables `--fstrim`, `--drop-client-cache`, `--drop-server-cache`, and `--delete-before-write` together. |
 | `--no-client-tune` | Skip running the client tuning scripts (`tune_checksums`/`tune_no_checksums`) before each test. |
 
 Copy `config.template.json` to `config.json` and edit it for your environment.
