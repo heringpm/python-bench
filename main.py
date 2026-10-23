@@ -56,7 +56,7 @@ def read_arguments():
     parser.add_argument("--client-stats", action="store_true", help="Collect client-side CPU/load/memory/network stats (via sar) for the duration of each test")
     parser.add_argument("--client-stats-interval", type=int, default=5, help="Sampling interval in seconds for --client-stats (default: 5)")
     parser.add_argument("--perf-profile", action="store_true", help="Profile each test on clients with `perf record` (for flamegraph generation). Intended for a single job, not a full sweep.")
-    parser.add_argument("--perf-profile-frequency", type=int, default=99, help="Sampling frequency in Hz for --perf-profile (default: 99)")
+    parser.add_argument("--perf-profile-frequency", type=int, default=49, help="Sampling frequency in Hz for --perf-profile (default: 49). Lower values (e.g. 19-29) reduce profiling overhead further, which matters most on high-bandwidth/large-blocksize runs.")
     parser.add_argument("--perf-profile-scope", choices=["system", "process", "both"], default="both",
                          help="Which flamegraph(s) to generate from --perf-profile: 'system' (everything on the box, to spot external causes), "
                               "'process' (narrowed to just the benchmark's threads), or 'both' (default).")
