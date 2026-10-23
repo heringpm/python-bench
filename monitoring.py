@@ -259,10 +259,11 @@ class PerfProfiling:
             run_cmd(f'clush --machinefile {self.machinefile} "sudo pkill -INT -f \'perf record -F\'"', dry_run=True)
             run_cmd(
                 f'clush --machinefile {self.machinefile} '
-                f'"sudo perf script -i {self.remote_data_path} > {self.remote_script_path} 2>/dev/null"',
+                f'"sudo perf script -i {self.remote_data_path} > {self.remote_script_path}"',
                 dry_run=True
             )
             run_cmd(f'clush --machinefile {self.machinefile} "sudo chmod 644 {self.remote_script_path}"', dry_run=True)
+            run_cmd(f'clush --machinefile {self.machinefile} "test -s {self.remote_script_path}"', dry_run=True)
             run_cmd(f"clush --machinefile {self.machinefile} --rcopy {self.remote_script_path} --dest {dest_dir}", dry_run=True)
             run_cmd(f'clush --machinefile {self.machinefile} "sudo rm -f {self.remote_data_path} {self.remote_script_path}"', dry_run=True)
             return
@@ -297,14 +298,33 @@ class PerfProfiling:
             return
 
         print("Converting perf.data to perf script output on clients...")
+        # Don't swallow stderr here (as before) - if `perf script` fails
+        # (e.g. kernel symbol/build-id issues) it would otherwise silently
+        # leave an empty .perf.script file, which only surfaces later as a
+        # confusing "Stack count is low (0)" error from flamegraph.pl.
         run_cmd(
             f'clush --machinefile {self.machinefile} '
-            f'"sudo perf script -i {self.remote_data_path} > {self.remote_script_path} 2>/dev/null"'
+            f'"sudo perf script -i {self.remote_data_path} > {self.remote_script_path}"'
         )
 
         # perf script's output is owned by root (sudo); make it readable so
         # the non-root clush --rcopy below can read and copy it back.
         run_cmd(f'clush --machinefile {self.machinefile} "sudo chmod 644 {self.remote_script_path}"')
+
+        # Fail loudly if the conversion produced an empty file on any
+        # client, instead of copying it back and only discovering the
+        # problem when flamegraph.pl complains about zero stack counts.
+        check = run_cmd(
+            f'clush --machinefile {self.machinefile} "test -s {self.remote_script_path}"',
+            check=False
+        )
+        if check.returncode != 0:
+            print(
+                f"Error: {self.remote_script_path} is missing or empty on one or more clients - "
+                "`perf script` conversion likely failed (see any error output above). "
+                f"Raw {self.remote_data_path} is left on the client(s) for manual inspection."
+            )
+            return
 
         print(f"Copying perf script output back to {dest_dir}...")
         run_cmd(f"clush --machinefile {self.machinefile} --rcopy {self.remote_script_path} --dest {dest_dir}")
