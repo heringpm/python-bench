@@ -270,7 +270,7 @@ class PerfProfiling:
         dest_dir = f"{self.log_path}/{self.tool}/{self.runid_base}"
 
         if self.dry_run:
-            run_cmd(f'clush --machinefile {self.machinefile} "sudo pkill -INT -f \'perf record -F\'"', dry_run=True)
+            run_cmd(f'clush --machinefile {self.machinefile} "sudo pkill -INT -x perf"', dry_run=True)
             run_cmd(
                 f'clush --machinefile {self.machinefile} '
                 f'"sudo perf script -i {self.remote_data_path} > {self.remote_script_path}"',
@@ -291,7 +291,17 @@ class PerfProfiling:
         # It (and perf.data) runs as root via sudo (perf_event_paranoid
         # blocks unprivileged system-wide profiling), so sudo is needed here
         # too.
-        run_cmd(f'clush --machinefile {self.machinefile} "sudo pkill -INT -f \'perf record -F\'"')
+        #
+        # -x (exact comm match on "perf") is used instead of -f (substring
+        # match against the full command line) because -f would also match
+        # *our own* driver process below when the driver and the client
+        # under test run on the same host (e.g. a single-client test): the
+        # local `clush --machinefile ... "sudo perf record -F ..."` command
+        # launched in start() literally contains the substring
+        # "perf record -F" in its own argv, so `pkill -f` would SIGINT that
+        # local driver process too, racing/corrupting the handoff and
+        # leaving an unusable (zero-stack) perf.data behind.
+        run_cmd(f'clush --machinefile {self.machinefile} "sudo pkill -INT -x perf"')
         self.process.wait()
         self.process = None
         if self._start_log_file is not None:
