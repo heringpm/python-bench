@@ -231,6 +231,8 @@ class PerfProfiling:
         self.process = None
         self.remote_data_path = f"/tmp/{self.fname}.perf.data"
         self.remote_script_path = f"/tmp/{self.fname}.perf.script"
+        self._start_log_path = f"/tmp/{self.fname}.perf.record.startlog"
+        self._start_log_file = None
 
     def start(self):
         if self.process is not None:
@@ -245,11 +247,17 @@ class PerfProfiling:
             return
 
         print("Starting perf profiling on clients...")
+        # Capture `perf record`'s own startup output (per-host, via clush)
+        # instead of discarding it - a silent failure here (e.g. no
+        # hardware PMU/cycles counter available on a VM) previously showed
+        # up only much later as a confusing "Stack count is low (0)" error
+        # from flamegraph.pl.
+        self._start_log_file = open(self._start_log_path, "wb")
         self.process = popen_cmd(
             script,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stdout=self._start_log_file,
+            stderr=subprocess.STDOUT
         )
 
     def stop(self):
@@ -280,6 +288,22 @@ class PerfProfiling:
         run_cmd(f'clush --machinefile {self.machinefile} "sudo pkill -INT -f \'perf record -F\'"')
         self.process.wait()
         self.process = None
+        if self._start_log_file is not None:
+            self._start_log_file.close()
+            self._start_log_file = None
+        try:
+            start_log = Path(self._start_log_path).read_text(errors="replace").strip()
+        except OSError:
+            start_log = ""
+        if start_log:
+            print(f"perf record output from clients:\n{start_log}")
+        # A client silently failing to even start `perf record` (e.g. no
+        # hardware PMU/cycles counter available, common on VMs) would
+        # otherwise only surface later as a confusing "Stack count is low
+        # (0)" flamegraph.pl error - the per-client output above should
+        # reveal that case directly.
+        if Path(self._start_log_path).exists():
+            Path(self._start_log_path).unlink()
 
         # Fail loudly here instead of letting a missing perf.data (e.g. if
         # `perf record` never started due to a permissions error) propagate
