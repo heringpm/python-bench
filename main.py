@@ -57,6 +57,12 @@ def read_arguments():
     parser.add_argument("--client-stats-interval", type=int, default=5, help="Sampling interval in seconds for --client-stats (default: 5)")
     parser.add_argument("--perf-profile", action="store_true", help="Profile each test on clients with `perf record` (for flamegraph generation). Intended for a single job, not a full sweep.")
     parser.add_argument("--perf-profile-frequency", type=int, default=99, help="Sampling frequency in Hz for --perf-profile (default: 99)")
+    parser.add_argument("--perf-profile-scope", choices=["system", "process", "both"], default="both",
+                         help="Which flamegraph(s) to generate from --perf-profile: 'system' (everything on the box, to spot external causes), "
+                              "'process' (narrowed to just the benchmark's threads), or 'both' (default).")
+    parser.add_argument("--perf-profile-process", default=None,
+                         help="Process/command name to isolate for the narrowed flamegraph (e.g. 'fio', 'ior'). "
+                              "Defaults to a guess based on the benchmark tool being run.")
     parser.add_argument("--dry-run", action="store_true", help="Print all commands that would run for the full config without executing them")
 
     args = parser.parse_args()
@@ -368,6 +374,8 @@ def main() -> None:
                         tool=tool,
                         fname=f"{runid}_{file_stamp}_{test}_log.out",
                         frequency=args.perf_profile_frequency,
+                        scope=args.perf_profile_scope,
+                        process_match=args.perf_profile_process,
                         dry_run=args.dry_run
                     )
                     perf_profiling.start()

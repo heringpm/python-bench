@@ -171,28 +171,55 @@ class ClientMonitoring:
 # unlike the lightweight sar-based ClientMonitoring above.
 PERF_RECORD_CMD = "perf record -F {frequency} -a -g -o {data_path}"
 
+# Best-guess process/command name to isolate when narrowing a flamegraph
+# down to "just the benchmark", keyed by tool name. Can be overridden per
+# run via PerfProfiling(process_match=...) / --perf-profile-process, since
+# e.g. mlperf's actual client process name depends on the training script.
+PERF_TOOL_PROCESS_MAP = {
+    "ior": "ior",
+    "mdtest": "mdtest",
+    "fio": "fio",
+    "fio_parallel": "fio",
+    "elbencho": "elbencho",
+    "io500": "io500",
+    "mlperf": "mlpstorage",
+}
+
 
 class PerfProfiling:
     """
-    Runs `perf record` across every host in a machinefile for the duration
-    of a single test, then converts the result to `perf script` output
-    (the standard input format for Brendan Gregg's FlameGraph scripts:
+    Runs `perf record -a -g` (system-wide, with call graphs) across every
+    host in a machinefile for the duration of a single test, then converts
+    the result to `perf script` output (the standard input format for
+    Brendan Gregg's FlameGraph scripts:
     https://github.com/brendangregg/FlameGraph) and copies it back to the
     local run's log directory, one file per client host.
 
-    If `stackcollapse-perf.pl` and `flamegraph.pl` are found on PATH, an
-    .svg flamegraph is also generated locally per host as a convenience;
-    otherwise the raw `.perf.script.<host>` files are left for you to run
-    through your own copy of those scripts.
+    The capture is always system-wide (so a "what else on the box is
+    slowing this down?" full-system flamegraph is always possible), but
+    which flamegraph(s) get generated from it is controlled by `scope`:
+      - "system":  one flamegraph of every process/thread on the host.
+      - "process": one flamegraph filtered down to only stacks whose comm
+                    name matches `process_match` (the benchmark itself).
+      - "both":    generate both of the above (default).
+
+    If `stackcollapse-perf.pl` and `flamegraph.pl` are found on PATH, the
+    .svg flamegraph(s) are generated locally per host as a convenience;
+    otherwise the raw `.perf.script.<host>` files (and, for "process"/
+    "both", the filtered `.perf.script.<host>.<process>` files) are left
+    for you to run through your own copy of those scripts.
     """
 
-    def __init__(self, machinefile, log_path, runid_base, tool, fname, frequency=99, dry_run=False):
+    def __init__(self, machinefile, log_path, runid_base, tool, fname, frequency=99,
+                 scope="both", process_match=None, dry_run=False):
         self.machinefile = machinefile
         self.log_path = log_path
         self.runid_base = runid_base
         self.tool = tool
         self.fname = fname
         self.frequency = frequency
+        self.scope = scope
+        self.process_match = process_match or PERF_TOOL_PROCESS_MAP.get(tool, tool)
         self.dry_run = dry_run
         self.process = None
         self.remote_data_path = f"/tmp/{self.fname}.perf.data"
@@ -259,9 +286,10 @@ class PerfProfiling:
 
     def _generate_flamegraphs(self, dest_dir):
         """Best-effort: if Brendan Gregg's FlameGraph scripts are installed
-        and on PATH, fold + render an .svg per host automatically. If not
-        found, the .perf.script.<host> files are left in dest_dir for you
-        to run through your own copy of those scripts."""
+        and on PATH, fold + render .svg(s) per host automatically (which
+        one(s) depends on `self.scope`). If the scripts aren't found, the
+        raw .perf.script.<host> files are left in dest_dir for you to run
+        through your own copy of those scripts."""
         stackcollapse = shutil.which("stackcollapse-perf.pl")
         flamegraph = shutil.which("flamegraph.pl")
         if not stackcollapse or not flamegraph:
@@ -273,6 +301,63 @@ class PerfProfiling:
 
         from pathlib import Path
         for script_file in Path(dest_dir).glob(f"{self.fname}.perf.script.*"):
-            svg_file = script_file.with_suffix(".svg")
-            run_cmd(f'{stackcollapse} "{script_file}" | {flamegraph} > "{svg_file}"')
-            print(f"Generated flamegraph: {svg_file}")
+            if self.scope in ("system", "both"):
+                svg_file = script_file.with_name(script_file.name + ".full.svg")
+                run_cmd(f'{stackcollapse} "{script_file}" | {flamegraph} --title "Full system" > "{svg_file}"')
+                print(f"Generated full-system flamegraph: {svg_file}")
+
+            if self.scope in ("process", "both"):
+                filtered_file = self._filter_script_by_process(script_file)
+                if filtered_file is None:
+                    print(
+                        f"Note: no stacks matching process '{self.process_match}' found in "
+                        f"{script_file}, skipping narrowed flamegraph for this host."
+                    )
+                    continue
+                svg_file = script_file.with_name(script_file.name + f".{self.process_match}.svg")
+                run_cmd(f'{stackcollapse} "{filtered_file}" | {flamegraph} --title "{self.process_match} only" > "{svg_file}"')
+                print(f"Generated {self.process_match}-only flamegraph: {svg_file}")
+
+    def _filter_script_by_process(self, script_file):
+        """Narrow a `perf script` output file down to only the stack
+        samples whose comm (process/thread name) matches `self.process_match`
+        (case-insensitive substring), so the resulting flamegraph shows
+        only where the benchmark itself is spending time instead of every
+        process on the host. Returns the path to the filtered file, or
+        None if no matching samples were found.
+
+        `perf script` output is a series of blocks separated by blank
+        lines; each block's first line starts with the comm name followed
+        by "pid/tid", e.g. "fio 12345/12346 1234.567891: ...".
+        """
+        process_match = self.process_match.lower()
+        filtered_file = script_file.with_name(script_file.name + f".{self.process_match}")
+
+        matched_any = False
+        with open(script_file) as src, open(filtered_file, "w") as dst:
+            current_block = []
+            keep_block = False
+
+            def flush_block():
+                nonlocal matched_any
+                if keep_block and current_block:
+                    dst.writelines(current_block)
+                    dst.write("\n")
+                    matched_any = True
+
+            for line in src:
+                if line.strip() == "":
+                    flush_block()
+                    current_block = []
+                    keep_block = False
+                    continue
+                if not current_block:
+                    comm = line.split()[0] if line.split() else ""
+                    keep_block = process_match in comm.lower()
+                current_block.append(line)
+            flush_block()
+
+        if not matched_any:
+            filtered_file.unlink(missing_ok=True)
+            return None
+        return filtered_file
