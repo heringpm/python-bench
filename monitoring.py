@@ -176,13 +176,15 @@ class ClientMonitoring:
 # time (not every test in a sweep) since the resulting perf.data/perf.script
 # files can get large and the call-graph unwinding adds measurable overhead,
 # unlike the lightweight sar-based ClientMonitoring above.
-# --call-graph dwarf (rather than the default frame-pointer-based unwinding)
-# is used because most distro binaries/kernels are built without frame
-# pointers (-fomit-frame-pointer), which silently produces samples with zero
-# usable stack frames - the root cause of a "Stack count is low (0)" /
-# "ERROR: No stack counts found" flamegraph.pl failure even though perf
-# record itself appears to succeed.
-PERF_RECORD_CMD = "sudo perf record -F {frequency} -a --call-graph dwarf,16384 -o {data_path}"
+# -g uses the default frame-pointer-based call-graph unwinding, which is
+# much lighter-weight (less data captured, lower overhead) than DWARF-based
+# unwinding (--call-graph dwarf,16384). The earlier "Stack count is low (0)"
+# issue actually turned out to be caused by pkill matching the wrong process
+# (see the -x perf note in stop()), not by frame-pointer unwinding, so the
+# lighter -g mode is worth trying again now that that's fixed. If stacks
+# come back empty/shallow again, switch back to
+# "--call-graph dwarf,16384" instead of "-g".
+PERF_RECORD_CMD = "sudo perf record -F {frequency} -a -g -o {data_path}"
 
 # Best-guess process/command name to isolate when narrowing a flamegraph
 # down to "just the benchmark", keyed by tool name. Can be overridden per
