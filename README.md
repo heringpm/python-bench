@@ -7,6 +7,24 @@ managing per-tool client services (`fio --server`, `elbencho --service`),
 starting/stopping SFA monitoring, and scraping key metrics (IOPS, throughput,
 etc.) to the console as each test runs.
 
+## Contents
+
+- [Running](#running)
+- [Global configuration](#global-configuration)
+  - [MPI configuration — where things get set](#mpi-configuration--where-things-get-set)
+- [Shared params](#shared-params)
+- [`ior`](#ior)
+- [`mdtest`](#mdtest)
+- [`fio`](#fio)
+- [`fio_parallel`](#fio_parallel)
+- [`mlperf`](#mlperf)
+  - [Letting `datasize` calculate the file count automatically](#letting-datasize-calculate-the-file-count-automatically)
+  - [Avoiding a double `datagen` pass](#avoiding-a-double-datagen-pass)
+- [`elbencho`](#elbencho)
+- [`io500`](#io500)
+- [`profiling.py` — single-test fio profiling](#profilingpy--single-test-fio-profiling)
+  - [Output](#output)
+
 ## Running
 
 ```
