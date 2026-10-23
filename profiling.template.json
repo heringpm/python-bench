@@ -1,0 +1,40 @@
+[
+  {
+    "data_path_root": "/edf",
+    "machine_file": "./machinefile.16",
+    "tuning_files": {
+      "tune_checksums": "./utils/tune-checksums.sh",
+      "tune_no_checksums": "./utils/tune-no-checksums.sh"
+    },
+    "mpirun_path": "/work/bin/benchmark_bin/openmpi-5.0.10b/bin/mpirun",
+    "mpi_conf": "-x UCX_LOG_LEVEL=error -x UCX_NET_DEVICES=mlx5_0:1 --map-by node --bind-to core:overload-allowed --use-hwthread-cpus --oversubscribe --allow-run-as-root",
+    "log_path": "/work/home/phering/profiling_runs",
+    "tools": {
+      "fio": "/work/bin/benchmark_bin/fio-3.42/fio"
+    },
+    "appliances": {
+      "400x3e01": "sv30[0-3]"
+    },
+    "tests": {
+      "fio": {
+        "pools": "ddn_nvme",
+        "stripecount": 1,
+        "stripesize": "1m",
+        "clients": 8,
+        "ppn": 64,
+        "ioengine": "libaio",
+        "rwmixread": 50,
+        "iodepth": 1,
+        "checksums": "off",
+        "filesize": "10g",
+        "blocksize": "1m",
+        "timebased": 1,
+        "runtime": 300,
+        "directio": 1,
+        "extra_args": "norandommap=1\nbuffered=0",
+        "operation": "write",
+        "interval_log_avg_msec": 1000
+      }
+    }
+  }
+]

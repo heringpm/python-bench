@@ -18,6 +18,7 @@ import csv
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
@@ -668,6 +669,105 @@ def parse_clientstats_log(log_path: Path) -> dict:
         "client_mem_used_max(%)":    mx(mem_used),
         "client_net_ifutil_max(%)":  mx(net_ifutil),
     }
+
+
+# ---------------------------------------------------------------------------
+# Client-side stats time-series parsing — used by profiling.py (not the
+# regular sweep report above) to build a per-sample, per-host time series
+# instead of collapsing each .clientstats file down to avg/max summary
+# columns. Reuses the same host-prefix/line-shape knowledge as
+# parse_clientstats_log, but also captures each sample's own HH:MM:SS AM/PM
+# timestamp so it can be aligned to fio's interval log on a shared
+# elapsed-seconds-since-test-start axis (see timeseries.combine_timeseries).
+# ---------------------------------------------------------------------------
+
+_HOST_PREFIX_WITH_NAME_RE = re.compile(r"^(\S+):\s?(.*)$")
+_TIMESTAMP_RE = re.compile(r"^(\d{2}:\d{2}:\d{2})\s+([AP]M)\s+(.*)$")
+
+# Same column shapes as _CPU_ALL_RE/_LOADAVG_RE/_MEM_RE/_NET_RE above, minus
+# the leading "<time> <AM/PM>" (already stripped off by _TIMESTAMP_RE).
+_CPU_ALL_REST_RE = re.compile(
+    r"^all\s+([\d.]+)\s+[\d.]+\s+([\d.]+)\s+([\d.]+)\s+[\d.]+\s+[\d.]+\s*$"
+)
+_LOADAVG_REST_RE = re.compile(r"^\d+\s+\d+\s+([\d.]+)\s+[\d.]+\s+[\d.]+\s+\d+\s*$")
+_MEM_REST_RE = re.compile(
+    r"^\d+\s+\d+\s+\d+\s+([\d.]+)\s+\d+\s+\d+\s+\d+\s+[\d.]+\s+\d+\s+\d+\s+\d+\s*$"
+)
+_NET_REST_RE = re.compile(
+    r"^(\S+)\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+([\d.]+)\s*$"
+)
+
+
+def parse_clientstats_timeseries(log_path: Path, start_wallclock: float) -> list:
+    """
+    Parse a *.clientstats file (same format as parse_clientstats_log) into
+    one row per recognized sample per host, instead of a single avg/max
+    summary. Each row is a dict with "elapsed_s" (seconds since
+    start_wallclock), "host", and exactly one of "cpu_user"/"cpu_system"/
+    "cpu_iowait" (together, from a `sar -u -P ALL` line), "loadavg1",
+    "mem_used", or "net_ifutil" set, depending on which sar line it came
+    from.
+
+    sar's timestamps have no date, only HH:MM:SS AM/PM, so each sample is
+    assumed to fall on start_wallclock's calendar date; a sample whose
+    time-of-day is more than 12 hours earlier than start_wallclock's is
+    assumed to have wrapped past midnight and is pushed a day forward.
+    Samples that don't parse as a recognized sar line are skipped.
+    """
+    lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    start_dt = datetime.fromtimestamp(start_wallclock)
+    start_date_str = start_dt.strftime("%Y-%m-%d")
+
+    rows = []
+    for raw_line in lines:
+        m = _HOST_PREFIX_WITH_NAME_RE.match(raw_line)
+        host, line = (m.group(1), m.group(2)) if m else ("unknown", raw_line)
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        tm = _TIMESTAMP_RE.match(stripped)
+        if not tm:
+            continue
+        time_str, ampm, rest = tm.groups()
+
+        try:
+            sample_dt = datetime.strptime(
+                f"{start_date_str} {time_str} {ampm}", "%Y-%m-%d %I:%M:%S %p"
+            )
+        except ValueError:
+            continue
+
+        elapsed_s = (sample_dt - start_dt).total_seconds()
+        if elapsed_s < -43200:  # more than 12h "before" start -> wrapped past midnight
+            elapsed_s += 86400
+
+        m2 = _CPU_ALL_REST_RE.match(rest)
+        if m2:
+            rows.append({
+                "elapsed_s": elapsed_s, "host": host,
+                "cpu_user": float(m2.group(1)),
+                "cpu_system": float(m2.group(2)),
+                "cpu_iowait": float(m2.group(3)),
+            })
+            continue
+
+        m2 = _LOADAVG_REST_RE.match(rest)
+        if m2:
+            rows.append({"elapsed_s": elapsed_s, "host": host, "loadavg1": float(m2.group(1))})
+            continue
+
+        m2 = _MEM_REST_RE.match(rest)
+        if m2:
+            rows.append({"elapsed_s": elapsed_s, "host": host, "mem_used": float(m2.group(1))})
+            continue
+
+        m2 = _NET_REST_RE.match(rest)
+        if m2 and m2.group(1).lower() not in ("iface", "lo"):
+            rows.append({"elapsed_s": elapsed_s, "host": host, "net_ifutil": float(m2.group(2))})
+            continue
+
+    return rows
 
 
 # ---------------------------------------------------------------------------

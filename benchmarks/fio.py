@@ -25,6 +25,10 @@ class FIOBenchmark:
         # same clients don't start/kill each other's server.
         self.manage_server = manage_server
         self.fio_job_path = Path("./benchmarks/fio_jobs")
+        # Set by run() when interval_log_avg_msec is requested - the
+        # remote (client-host) path prefix used for fio's native
+        # write_bw_log/write_iops_log interval logs. None otherwise.
+        self.interval_log_prefix = None
 
     def _start_fio_server(self):
         start_server_cmd = f"clush --machinefile {self.machinefile} {self.fio_path} --server --daemonize=/tmp/fio.pid"
@@ -101,12 +105,36 @@ class FIOBenchmark:
             elif self.params["operation"] in ("read", "randread"):
                 cmd += f' RWMIXREAD=100'
 
+            # Opt-in fio native bw/iops interval logging, used by
+            # profiling.py for single-test time-series charts. Only set
+            # when explicitly requested (profiling.py always sets this;
+            # the regular config.json sweep never does), so this has no
+            # effect on main.py's existing behavior.
+            # fio writes these files on each remote client host (one of
+            # the clients named in the machinefile, via --client), not on
+            # the orchestrator host running this script - so the prefix
+            # must be a path that exists on the clients. /tmp always
+            # exists; the caller (profiling.py) is responsible for
+            # `clush --rcopy`-ing the resulting *_bw.*.log/*_iops.*.log
+            # files back to log_path afterwards.
+            interval_ms = self.params.get("interval_log_avg_msec")
+            if interval_ms:
+                log_prefix = f"/tmp/{self.fname}.interval"
+                self.interval_log_prefix = log_prefix
+                cmd += f' LOGPREFIX={log_prefix} LOG_AVG_MSEC={interval_ms}'
+
+            # Use the interval-logging variant of the job file only when
+            # interval_log_avg_msec is set, so the default sweep path keeps
+            # using the plain job files unchanged (no ${LOGPREFIX}/
+            # ${LOG_AVG_MSEC} reference at all when those vars aren't set).
+            interval_suffix = "_interval" if interval_ms else ""
+
             if self.params["timebased"]:
-                job_file = f"{self.fio_job_path}/fio_timebased.job"
+                job_file = f"{self.fio_job_path}/fio_timebased{interval_suffix}.job"
                 cmd += f' RUNTIME={self.params["runtime"]}s '
 
             else :
-                job_file = f"{self.fio_job_path}/fio.job"
+                job_file = f"{self.fio_job_path}/fio{interval_suffix}.job"
 
             if self.params["operation"] in ("write", "randwrite"):
                 layout_cmd = (
