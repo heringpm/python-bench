@@ -225,7 +225,7 @@ class PerfProfiling:
     for you to run through your own copy of those scripts.
     """
 
-    def __init__(self, machinefile, log_path, runid_base, tool, fname, frequency=49,
+    def __init__(self, machinefile, log_path, runid_base, tool, fname, frequency=25,
                  scope="both", process_match=None, dry_run=False):
         self.machinefile = machinefile
         self.log_path = log_path
