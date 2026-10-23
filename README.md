@@ -31,6 +31,12 @@ Options:
 | `--perf-profile-scope` | Which flamegraph(s) to generate from `--perf-profile`: `system` (every process/thread on the box, to spot something external slowing the client down), `process` (narrowed to just the benchmark's own threads, to see where it's actually spending time), or `both` (default). The capture itself is always system-wide; this only controls which `.svg`(s) get rendered from it, so you never have to re-run to get the other view. |
 | `--perf-profile-process` | Process/command name to isolate for the narrowed (`process`/`both`) flamegraph, e.g. `fio`, `ior`, `mdtest`. Defaults to a guess based on the benchmark tool being run (see `PERF_TOOL_PROCESS_MAP` in `monitoring.py`); override this if the guess doesn't match the actual client process name (e.g. for `mlperf`). |
 
+`.svg` flamegraph generation for `--perf-profile` uses Brendan Gregg's
+[FlameGraph](https://github.com/brendangregg/FlameGraph) scripts, a vendored
+copy of which (`flamegraph.pl`, `stackcollapse-perf.pl`) lives under
+`utils/FlameGraph/` so this works with no extra setup. A system-wide install
+on `PATH` is preferred if present, falling back to the vendored copy.
+
 Copy `config.template.json` to `config.json` and edit it for your environment.
 Every entry under `tests.<tool>` is a dict of `param: [list of values]`; the
 suite takes the cross product (`itertools.product`) of all lists for a tool to

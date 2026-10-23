@@ -2,12 +2,19 @@
 
 import shutil
 import subprocess
+from pathlib import Path
 
 from utils.shell import run_cmd, popen_cmd
 
 pdstat_script = "/work/scripts/SFA/pdstats_v11.py3"
 vdstat_script = "/work/scripts/SFA/vdstats_v12.py3"
 iostat_script = "/work/scripts/mark/iostats_aggregator_generic2025.sh"
+
+# Vendored copy of Brendan Gregg's FlameGraph scripts (flamegraph.pl,
+# stackcollapse-perf.pl) so .svg generation for --perf-profile always works
+# out of the box, with no PATH setup required. Falls back to PATH first in
+# case a newer/local install is preferred.
+FLAMEGRAPH_DIR = Path(__file__).parent / "utils" / "FlameGraph"
 
 class SFAMonitoring:
 
@@ -290,16 +297,16 @@ class PerfProfiling:
         one(s) depends on `self.scope`). If the scripts aren't found, the
         raw .perf.script.<host> files are left in dest_dir for you to run
         through your own copy of those scripts."""
-        stackcollapse = shutil.which("stackcollapse-perf.pl")
-        flamegraph = shutil.which("flamegraph.pl")
+        stackcollapse = shutil.which("stackcollapse-perf.pl") or self._vendored_flamegraph_script("stackcollapse-perf.pl")
+        flamegraph = shutil.which("flamegraph.pl") or self._vendored_flamegraph_script("flamegraph.pl")
         if not stackcollapse or not flamegraph:
             print(
-                "Note: stackcollapse-perf.pl/flamegraph.pl not found on PATH, "
-                f"skipping automatic .svg generation. Raw perf script output is in {dest_dir}."
+                "Note: stackcollapse-perf.pl/flamegraph.pl not found on PATH or in "
+                f"{FLAMEGRAPH_DIR}, skipping automatic .svg generation. "
+                f"Raw perf script output is in {dest_dir}."
             )
             return
 
-        from pathlib import Path
         for script_file in Path(dest_dir).glob(f"{self.fname}.perf.script.*"):
             if self.scope in ("system", "both"):
                 svg_file = script_file.with_name(script_file.name + ".full.svg")
@@ -317,6 +324,13 @@ class PerfProfiling:
                 svg_file = script_file.with_name(script_file.name + f".{self.process_match}.svg")
                 run_cmd(f'{stackcollapse} "{filtered_file}" | {flamegraph} --title "{self.process_match} only" > "{svg_file}"')
                 print(f"Generated {self.process_match}-only flamegraph: {svg_file}")
+
+    @staticmethod
+    def _vendored_flamegraph_script(script_name):
+        """Fallback to the copy of this script vendored under
+        utils/FlameGraph/ when it isn't found on PATH."""
+        script_path = FLAMEGRAPH_DIR / script_name
+        return str(script_path) if script_path.is_file() else None
 
     def _filter_script_by_process(self, script_file):
         """Narrow a `perf script` output file down to only the stack
