@@ -176,7 +176,7 @@ class ClientMonitoring:
 # time (not every test in a sweep) since the resulting perf.data/perf.script
 # files can get large and the call-graph unwinding adds measurable overhead,
 # unlike the lightweight sar-based ClientMonitoring above.
-PERF_RECORD_CMD = "perf record -F {frequency} -a -g -o {data_path}"
+PERF_RECORD_CMD = "sudo perf record -F {frequency} -a -g -o {data_path}"
 
 # Best-guess process/command name to isolate when narrowing a flamegraph
 # down to "just the benchmark", keyed by tool name. Can be overridden per
@@ -256,14 +256,15 @@ class PerfProfiling:
         dest_dir = f"{self.log_path}/{self.tool}/{self.runid_base}"
 
         if self.dry_run:
-            run_cmd(f'clush --machinefile {self.machinefile} "pkill -INT -f \'perf record -F\'"', dry_run=True)
+            run_cmd(f'clush --machinefile {self.machinefile} "sudo pkill -INT -f \'perf record -F\'"', dry_run=True)
             run_cmd(
                 f'clush --machinefile {self.machinefile} '
-                f'"perf script -i {self.remote_data_path} > {self.remote_script_path} 2>/dev/null"',
+                f'"sudo perf script -i {self.remote_data_path} > {self.remote_script_path} 2>/dev/null"',
                 dry_run=True
             )
+            run_cmd(f'clush --machinefile {self.machinefile} "sudo chmod 644 {self.remote_script_path}"', dry_run=True)
             run_cmd(f"clush --machinefile {self.machinefile} --rcopy {self.remote_script_path} --dest {dest_dir}", dry_run=True)
-            run_cmd(f'clush --machinefile {self.machinefile} "rm -f {self.remote_data_path} {self.remote_script_path}"', dry_run=True)
+            run_cmd(f'clush --machinefile {self.machinefile} "sudo rm -f {self.remote_data_path} {self.remote_script_path}"', dry_run=True)
             return
 
         if self.process is None:
@@ -272,22 +273,45 @@ class PerfProfiling:
 
         # `perf record` needs SIGINT (not a plain kill) to flush and close
         # out the perf.data file cleanly - a hard kill can leave it corrupt.
-        run_cmd(f'clush --machinefile {self.machinefile} "pkill -INT -f \'perf record -F\'"')
+        # It (and perf.data) runs as root via sudo (perf_event_paranoid
+        # blocks unprivileged system-wide profiling), so sudo is needed here
+        # too.
+        run_cmd(f'clush --machinefile {self.machinefile} "sudo pkill -INT -f \'perf record -F\'"')
         self.process.wait()
         self.process = None
+
+        # Fail loudly here instead of letting a missing perf.data (e.g. if
+        # `perf record` never started due to a permissions error) propagate
+        # into a confusing "failed to open perf.data" error from `perf
+        # script` below.
+        check = run_cmd(
+            f'clush --machinefile {self.machinefile} "test -s {self.remote_data_path}"',
+            check=False
+        )
+        if check.returncode != 0:
+            print(
+                f"Error: {self.remote_data_path} is missing or empty on one or more clients - "
+                "perf record likely failed to start (check sudo/perf permissions on the client). "
+                "Skipping perf script conversion."
+            )
+            return
 
         print("Converting perf.data to perf script output on clients...")
         run_cmd(
             f'clush --machinefile {self.machinefile} '
-            f'"perf script -i {self.remote_data_path} > {self.remote_script_path} 2>/dev/null"'
+            f'"sudo perf script -i {self.remote_data_path} > {self.remote_script_path} 2>/dev/null"'
         )
+
+        # perf script's output is owned by root (sudo); make it readable so
+        # the non-root clush --rcopy below can read and copy it back.
+        run_cmd(f'clush --machinefile {self.machinefile} "sudo chmod 644 {self.remote_script_path}"')
 
         print(f"Copying perf script output back to {dest_dir}...")
         run_cmd(f"clush --machinefile {self.machinefile} --rcopy {self.remote_script_path} --dest {dest_dir}")
 
         # Clean up the (potentially large) remote files now that they've
         # been copied back locally.
-        run_cmd(f'clush --machinefile {self.machinefile} "rm -f {self.remote_data_path} {self.remote_script_path}"')
+        run_cmd(f'clush --machinefile {self.machinefile} "sudo rm -f {self.remote_data_path} {self.remote_script_path}"')
 
         self._generate_flamegraphs(dest_dir)
 
