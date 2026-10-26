@@ -38,8 +38,14 @@ def test_parse_fio_interval_log():
 
 
 def test_combine_timeseries():
-    bw_rows = [{"elapsed_s": 1.0, "value": 100.0}, {"elapsed_s": 1.4, "value": 50.0}]
-    iops_rows = [{"elapsed_s": 1.0, "value": 10.0}]
+    bw_rows = [
+        {"elapsed_s": 1.0, "value": 100.0, "direction": "read"},
+        {"elapsed_s": 1.4, "value": 50.0, "direction": "write"},
+    ]
+    iops_rows = [
+        {"elapsed_s": 1.0, "value": 6.0, "direction": "read"},
+        {"elapsed_s": 1.0, "value": 4.0, "direction": "write"},
+    ]
     clientstats_rows = [
         {"elapsed_s": 1.0, "host": "h1", "cpu_user": 10.0, "cpu_system": 2.0, "cpu_iowait": 1.0},
         {"elapsed_s": 1.2, "host": "h2", "cpu_user": 20.0, "cpu_system": 4.0, "cpu_iowait": 3.0},
@@ -54,7 +60,11 @@ def test_combine_timeseries():
     row = combined[0]
     check("combine_timeseries elapsed_s bucket", row["elapsed_s"] == 1)
     check("combine_timeseries bw_bytes_per_s", row["bw_bytes_per_s"] == round(150.0 * 1024, 2))
+    check("combine_timeseries bw_read_bytes_per_s", row["bw_read_bytes_per_s"] == round(100.0 * 1024, 2))
+    check("combine_timeseries bw_write_bytes_per_s", row["bw_write_bytes_per_s"] == round(50.0 * 1024, 2))
     check("combine_timeseries iops", row["iops"] == 10.0)
+    check("combine_timeseries iops_read", row["iops_read"] == 6.0)
+    check("combine_timeseries iops_write", row["iops_write"] == 4.0)
     check("combine_timeseries cpu_user_avg", row["cpu_user_avg"] == 15.0)
     check("combine_timeseries net_ifutil_max", row["net_ifutil_max"] == 50.0)
     check("combine_timeseries perf_samples_total", row["perf_samples_total"] == 150)
@@ -69,6 +79,14 @@ def test_combine_timeseries():
     no_perf = combine_timeseries(bw_rows, [], [])
     check("combine_timeseries no perf arg perf_samples_total blank", no_perf[0]["perf_samples_total"] == "")
     check("combine_timeseries no perf arg perf_samples_process blank", no_perf[0]["perf_samples_process"] == "")
+
+    # A single-direction job (e.g. write-only) still populates the combined
+    # total, but the opposite direction's split column stays blank.
+    write_only_rows = [{"elapsed_s": 1.0, "value": 100.0, "direction": "write"}]
+    write_only = combine_timeseries(write_only_rows, [], [])
+    check("combine_timeseries write-only bw_bytes_per_s", write_only[0]["bw_bytes_per_s"] == round(100.0 * 1024, 2))
+    check("combine_timeseries write-only bw_write_bytes_per_s", write_only[0]["bw_write_bytes_per_s"] == round(100.0 * 1024, 2))
+    check("combine_timeseries write-only bw_read_bytes_per_s blank", write_only[0]["bw_read_bytes_per_s"] == "")
 
 
 def test_parse_perf_script_samples():

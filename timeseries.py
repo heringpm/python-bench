@@ -120,7 +120,11 @@ def parse_perf_script_samples(path: Union[str, Path], process_match: Optional[st
 COMBINED_COLUMNS = [
     "elapsed_s",
     "bw_bytes_per_s",
+    "bw_read_bytes_per_s",
+    "bw_write_bytes_per_s",
     "iops",
+    "iops_read",
+    "iops_write",
     "cpu_user_avg",
     "cpu_system_avg",
     "cpu_iowait_avg",
@@ -153,23 +157,50 @@ def combine_timeseries(
     one combined row per bucket that has data from at least one source.
     bw values (fio's native KiB/s) are summed across every row in a bucket
     (e.g. multiple jobs/threads) and converted to bytes/s; iops values are
-    summed; clientstats values are averaged across hosts (maxed for
-    net_ifutil); perf sample counts (from parse_perf_script_samples, total
-    and process-filtered) are summed across hosts. Returns a list of dicts
-    with keys from COMBINED_COLUMNS, in ascending elapsed_s order.
+    summed. For mixed rw/randrw jobs, fio's interval log contains both
+    read (direction=0) and write (direction=1) rows in the same file -
+    bw_read_bytes_per_s/bw_write_bytes_per_s and iops_read/iops_write
+    break those out separately (in addition to the combined
+    bw_bytes_per_s/iops totals), so both sides of a mixed workload are
+    visible rather than lumped into one number. clientstats values are
+    averaged across hosts (maxed for net_ifutil); perf sample counts
+    (from parse_perf_script_samples, total and process-filtered) are
+    summed across hosts. Returns a list of dicts with keys from
+    COMBINED_COLUMNS, in ascending elapsed_s order.
     """
     buckets: dict = {}
 
     def bucket_for(elapsed_s: float) -> int:
         return round(elapsed_s)
 
+    def direction_key(row: dict) -> str:
+        # Mixed rw/randrw jobs log both read and write rows (data_direction
+        # 0/1) into the same interval log file - split them here so both
+        # sides of the test are visible, instead of silently lumping them
+        # into a single number that (depending on the mix) looks like it's
+        # only reflecting one direction. Anything that isn't "read"/"write"
+        # (e.g. "trim", or a plain write-only/read-only job where direction
+        # defaults to the job's own operation) still counts toward the
+        # combined total via "_bw_vals"/"_iops_vals" below.
+        return row.get("direction")
+
     for row in bw_rows:
         b = buckets.setdefault(bucket_for(row["elapsed_s"]), {})
         b.setdefault("_bw_vals", []).append(row["value"])
+        d = direction_key(row)
+        if d == "read":
+            b.setdefault("_bw_read_vals", []).append(row["value"])
+        elif d == "write":
+            b.setdefault("_bw_write_vals", []).append(row["value"])
 
     for row in iops_rows:
         b = buckets.setdefault(bucket_for(row["elapsed_s"]), {})
         b.setdefault("_iops_vals", []).append(row["value"])
+        d = direction_key(row)
+        if d == "read":
+            b.setdefault("_iops_read_vals", []).append(row["value"])
+        elif d == "write":
+            b.setdefault("_iops_write_vals", []).append(row["value"])
 
     for row in clientstats_rows:
         b = buckets.setdefault(bucket_for(row["elapsed_s"]), {})
@@ -195,11 +226,20 @@ def combine_timeseries(
         bw_vals = b.get("_bw_vals", [])
         iops_vals = b.get("_iops_vals", [])
 
+        bw_read_vals = b.get("_bw_read_vals", [])
+        bw_write_vals = b.get("_bw_write_vals", [])
+        iops_read_vals = b.get("_iops_read_vals", [])
+        iops_write_vals = b.get("_iops_write_vals", [])
+
         row = {
             "elapsed_s": elapsed_s,
             # fio's bw log is in KiB/s by default -> convert to bytes/s
             "bw_bytes_per_s": round(sum(bw_vals) * 1024, 2) if bw_vals else "",
+            "bw_read_bytes_per_s": round(sum(bw_read_vals) * 1024, 2) if bw_read_vals else "",
+            "bw_write_bytes_per_s": round(sum(bw_write_vals) * 1024, 2) if bw_write_vals else "",
             "iops": round(sum(iops_vals), 2) if iops_vals else "",
+            "iops_read": round(sum(iops_read_vals), 2) if iops_read_vals else "",
+            "iops_write": round(sum(iops_write_vals), 2) if iops_write_vals else "",
         }
 
         for field in _CLIENTSTATS_AVG_FIELDS:

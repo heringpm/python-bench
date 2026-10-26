@@ -396,8 +396,10 @@ output directory with one row per second and these columns:
 | Column | Description |
 | --- | --- |
 | `elapsed_s` | Seconds since the test started. |
-| `bw_bytes_per_s` | Bandwidth from fio's interval log (summed across jobs/threads), in bytes/s. |
-| `iops` | IOPS from fio's interval log (summed across jobs/threads). |
+| `bw_bytes_per_s` | Combined bandwidth from fio's interval log (summed across jobs/threads **and** read+write), in bytes/s. |
+| `bw_read_bytes_per_s` / `bw_write_bytes_per_s` | Bandwidth split out by direction, for mixed `rw`/`randrw` jobs whose interval log contains both read and write rows — blank for a direction with no data in that second (e.g. always blank on a pure `write`/`randwrite` or `read`/`randread` job). |
+| `iops` | Combined IOPS from fio's interval log (summed across jobs/threads **and** read+write). |
+| `iops_read` / `iops_write` | IOPS split out by direction, same rules as `bw_read_bytes_per_s`/`bw_write_bytes_per_s`. |
 | `cpu_user_avg` / `cpu_system_avg` / `cpu_iowait_avg` | Average `%user`/`%system`/`%iowait` across client hosts (`sar -u -P ALL`). |
 | `loadavg1_avg` | Average 1-minute load average across client hosts (`sar -q`). |
 | `mem_used_avg` | Average memory utilization across client hosts (`sar -r`). |
