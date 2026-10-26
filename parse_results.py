@@ -247,25 +247,65 @@ FIO_METRIC_COLUMNS = [
     "operation",
     "error",
     "BW_summary(MiB/s)",
+    "BW_summary_read(MiB/s)",
+    "BW_summary_write(MiB/s)",
     "IOPS_summary",
+    "IOPS_summary_read",
+    "IOPS_summary_write",
     "BW_min(MiB/s)",
+    "BW_min_read(MiB/s)",
+    "BW_min_write(MiB/s)",
     "BW_max(MiB/s)",
+    "BW_max_read(MiB/s)",
+    "BW_max_write(MiB/s)",
     "BW_avg(MiB/s)",
+    "BW_avg_read(MiB/s)",
+    "BW_avg_write(MiB/s)",
     "BW_stdev",
+    "BW_stdev_read",
+    "BW_stdev_write",
     "IOPS_min",
+    "IOPS_min_read",
+    "IOPS_min_write",
     "IOPS_max",
+    "IOPS_max_read",
+    "IOPS_max_write",
     "IOPS_avg",
+    "IOPS_avg_read",
+    "IOPS_avg_write",
     "IOPS_stdev",
+    "IOPS_stdev_read",
+    "IOPS_stdev_write",
     "lat_min(usec)",
+    "lat_min_read(usec)",
+    "lat_min_write(usec)",
     "lat_max(usec)",
+    "lat_max_read(usec)",
+    "lat_max_write(usec)",
     "lat_avg(usec)",
+    "lat_avg_read(usec)",
+    "lat_avg_write(usec)",
     "lat_stdev",
+    "lat_stdev_read",
+    "lat_stdev_write",
     "clat_p50(usec)",
+    "clat_p50_read(usec)",
+    "clat_p50_write(usec)",
     "clat_p90(usec)",
+    "clat_p90_read(usec)",
+    "clat_p90_write(usec)",
     "clat_p95(usec)",
+    "clat_p95_read(usec)",
+    "clat_p95_write(usec)",
     "clat_p99(usec)",
+    "clat_p99_read(usec)",
+    "clat_p99_write(usec)",
     "clat_p99.9(usec)",
+    "clat_p99.9_read(usec)",
+    "clat_p99.9_write(usec)",
     "clat_p99.99(usec)",
+    "clat_p99.99_read(usec)",
+    "clat_p99.99_write(usec)",
 ]
 
 # Percentile labels fio prints in the "clat percentiles (<unit>):" block,
@@ -403,6 +443,12 @@ def parse_fio_log(log_path: Path) -> dict:
     in_block = False
     in_percentile_block = False
     percentile_unit = "usec"
+    # Mixed rw/randrw jobs print a separate read: ... / write: ... block,
+    # each with its own bw/iops/lat/clat lines - track which block we're
+    # currently in so both sides can be captured (see *_read/*_write
+    # columns below), instead of the second block silently overwriting
+    # the first's values in the plain (unsuffixed) columns.
+    current_direction = None
 
     for line in lines:
         stripped = line.strip()
@@ -428,9 +474,19 @@ def parse_fio_log(log_path: Path) -> dict:
         # read/write summary line: "  read: IOPS=353k, BW=2761Mi ..."
         m = re.match(r"(read|write|randread|randwrite|randrw):\s+IOPS=(\S+),\s+BW=(\S+)", stripped)
         if m:
-            metrics["operation"]         = m.group(1)
+            label = m.group(1)
+            if "read" in label:
+                current_direction = "read"
+            elif "write" in label:
+                current_direction = "write"
+            else:
+                current_direction = None
+            metrics["operation"]         = label
             metrics["IOPS_summary"]      = to_plain_number(m.group(2))
             metrics["BW_summary(MiB/s)"] = to_mib(m.group(3))
+            if current_direction:
+                metrics[f"IOPS_summary_{current_direction}"]      = to_plain_number(m.group(2))
+                metrics[f"BW_summary_{current_direction}(MiB/s)"] = to_mib(m.group(3))
             continue
 
         # aggregate bw line: "bw (  MiB/s): min=  509, max= 4856, per=100.00%, avg=2762.46, stdev=12.19"
@@ -456,6 +512,11 @@ def parse_fio_log(log_path: Path) -> dict:
             metrics["BW_max(MiB/s)"] = scale_bw(kv.get("max", ""))
             metrics["BW_avg(MiB/s)"] = scale_bw(kv.get("avg", ""))
             metrics["BW_stdev"]      = scale_bw(kv.get("stdev", ""))
+            if current_direction:
+                metrics[f"BW_min_{current_direction}(MiB/s)"] = scale_bw(kv.get("min", ""))
+                metrics[f"BW_max_{current_direction}(MiB/s)"] = scale_bw(kv.get("max", ""))
+                metrics[f"BW_avg_{current_direction}(MiB/s)"] = scale_bw(kv.get("avg", ""))
+                metrics[f"BW_stdev_{current_direction}"]      = scale_bw(kv.get("stdev", ""))
             continue
 
         # aggregate iops line: "iops        : min=65188, max=621622, avg=353594.93, stdev=1560.79"
@@ -466,6 +527,11 @@ def parse_fio_log(log_path: Path) -> dict:
             metrics["IOPS_max"]   = kv.get("max", "")
             metrics["IOPS_avg"]   = kv.get("avg", "")
             metrics["IOPS_stdev"] = kv.get("stdev", "")
+            if current_direction:
+                metrics[f"IOPS_min_{current_direction}"]   = kv.get("min", "")
+                metrics[f"IOPS_max_{current_direction}"]   = kv.get("max", "")
+                metrics[f"IOPS_avg_{current_direction}"]   = kv.get("avg", "")
+                metrics[f"IOPS_stdev_{current_direction}"] = kv.get("stdev", "")
             continue
 
         # aggregate lat line: "lat (usec): min=94, max=531206, avg=1446.19, stdev=4084.72"
@@ -482,6 +548,11 @@ def parse_fio_log(log_path: Path) -> dict:
                 metrics["lat_max(usec)"] = kv.get("max", "")
                 metrics["lat_avg(usec)"] = kv.get("avg", "")
                 metrics["lat_stdev"]     = kv.get("stdev", "")
+                if current_direction:
+                    metrics[f"lat_min_{current_direction}(usec)"] = kv.get("min", "")
+                    metrics[f"lat_max_{current_direction}(usec)"] = kv.get("max", "")
+                    metrics[f"lat_avg_{current_direction}(usec)"] = kv.get("avg", "")
+                    metrics[f"lat_stdev_{current_direction}"]     = kv.get("stdev", "")
             continue
 
         # clat percentile block, e.g.:
@@ -504,6 +575,8 @@ def parse_fio_log(log_path: Path) -> dict:
                     col_suffix = FIO_CLAT_PERCENTILES.get(pct_str)
                     if col_suffix:
                         metrics[f"clat_{col_suffix}(usec)"] = to_usec(val_str, percentile_unit)
+                        if current_direction:
+                            metrics[f"clat_{col_suffix}_{current_direction}(usec)"] = to_usec(val_str, percentile_unit)
                 continue
             else:
                 in_percentile_block = False
