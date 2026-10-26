@@ -450,20 +450,29 @@ def parse_fio_log(log_path: Path) -> dict:
     # the first's values in the plain (unsuffixed) columns.
     current_direction = None
 
+    # fio --client (distributed) runs print one per-host result block for
+    # *each* client (header: "fiojob: (groupid=0, jobs=4): err= 0: pid=...")
+    # before printing the real "All clients:" aggregate block at the end.
+    # A genuine single-host (no --client) run has no "All clients:" section
+    # at all - its lone per-group summary line uses that exact same
+    # "fiojob: (groupid=..." format. Only fall back to matching that header
+    # when the log has no "All clients:" section, so a multi-host run's
+    # first per-host block isn't mistaken for the aggregate summary (which
+    # previously caused only one node's numbers to be captured, since
+    # parsing stops at that block's "cpu" line before reaching the real
+    # aggregate further down).
+    has_all_clients_block = any("All clients:" in line for line in lines)
+
     for line in lines:
         stripped = line.strip()
 
-        # entry point: the aggregate summary block.
-        # fio --client (distributed) runs report an "All clients:" header
-        # before the aggregate read/write/bw/iops/lat lines. Single-host
-        # runs have no such header - the per-group summary line
-        # ("fiojob: (groupid=0, jobs=16): err= 0: pid=...") is immediately
-        # followed by those same aggregate lines, so treat it as an
-        # equivalent entry point. (Not to be confused with the per-job
-        # startup line, which is prefixed with the hostname, e.g.
-        # "<c214.maas> fiojob: (g=0): rw=read, ...".)
+        # entry point: the aggregate summary block. (Not to be confused
+        # with the per-job startup line, which is prefixed with the
+        # hostname, e.g. "<c214.maas> fiojob: (g=0): rw=read, ...".)
         if stripped.startswith("All clients:") or (
-            stripped.startswith("fiojob:") and "groupid=" in stripped
+            not has_all_clients_block
+            and stripped.startswith("fiojob:")
+            and "groupid=" in stripped
         ):
             in_block = True
             continue
