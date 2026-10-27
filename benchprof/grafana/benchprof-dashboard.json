@@ -1,0 +1,89 @@
+{
+  "title": "benchprof: live client profiling",
+  "uid": "benchprof-live",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "5s",
+  "time": {"from": "now-15m", "to": "now"},
+  "templating": {
+    "list": [
+      {"name": "DS_PROMETHEUS", "type": "datasource", "query": "prometheus", "current": {}}
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "title": "Elbencho throughput (MiB/s)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "MiBs", "custom": {"fillOpacity": 10}}, "overrides": []},
+      "targets": [
+        {"expr": "sum(benchprof_throughput_mibps) by (entity)", "legendFormat": "{{entity}}"}
+      ]
+    },
+    {
+      "id": 2, "title": "Elbencho IOPS", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "iops", "custom": {"fillOpacity": 10}}, "overrides": []},
+      "targets": [
+        {"expr": "sum(benchprof_iops) by (entity)", "legendFormat": "{{entity}}"}
+      ]
+    },
+    {
+      "id": 3, "title": "Elbencho latency (entry vs IO)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "µs"}, "overrides": []},
+      "targets": [
+        {"expr": "avg(benchprof_latency_entry_us) by (entity)", "legendFormat": "{{entity}} entry"},
+        {"expr": "avg(benchprof_latency_io_us) by (entity)", "legendFormat": "{{entity}} io"}
+      ]
+    },
+    {
+      "id": 4, "title": "CPU busy % per node (100 - idle)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "custom": {"fillOpacity": 10}}, "overrides": []},
+      "targets": [
+        {"expr": "100 - benchprof_cpu_percent{mode=\"idle\"}", "legendFormat": "{{node}}"}
+      ]
+    },
+    {
+      "id": 5, "title": "Cluster-wide CPU mode breakdown (avg)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "custom": {"fillOpacity": 60, "stacking": {"mode": "normal", "group": "cpu"}}}, "overrides": []},
+      "targets": [
+        {"expr": "avg(benchprof_cpu_percent) by (mode)", "legendFormat": "{{mode}}"}
+      ]
+    },
+    {
+      "id": 6, "title": "Memory used % per node", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "custom": {"fillOpacity": 10}}, "overrides": []},
+      "targets": [
+        {"expr": "benchprof_mem_percent", "legendFormat": "{{node}}"}
+      ]
+    },
+    {
+      "id": 7, "title": "Top 10 processes by CPU % (cluster-wide)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "percent", "custom": {"fillOpacity": 10}}, "overrides": []},
+      "targets": [
+        {"expr": "topk(10, benchprof_process_cpu_percent)", "legendFormat": "{{node}}: {{command}}"}
+      ]
+    },
+    {
+      "id": 8, "title": "IB/RoCE link throughput (Gb/s) per node", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 40},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "Gbits", "custom": {"fillOpacity": 10}}, "overrides": []},
+      "targets": [
+        {"expr": "sum(benchprof_net_link_gbps) by (node, direction)", "legendFormat": "{{node}} {{direction}}"}
+      ]
+    }
+  ]
+}
