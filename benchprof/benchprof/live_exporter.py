@@ -139,10 +139,16 @@ class ControllerExporter:
 
     def start(self) -> None:
         self._poller.start()
-        self._server = socketserver.ThreadingTCPServer(
-            ("0.0.0.0", self.port), _make_handler(self.collector)
-        )
-        self._server.allow_reuse_address = True
+        # allow_reuse_address must be a class attribute set *before*
+        # construction: ThreadingTCPServer.__init__ calls server_bind()
+        # immediately (bind_and_activate defaults to True), so setting the
+        # instance attribute afterwards is too late to affect SO_REUSEADDR
+        # and a socket left in TIME_WAIT by a prior crashed/killed run
+        # would make the next run fail with "Address already in use".
+        class _ReusableServer(socketserver.ThreadingTCPServer):
+            allow_reuse_address = True
+
+        self._server = _ReusableServer(("0.0.0.0", self.port), _make_handler(self.collector))
         self._server_thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._server_thread.start()
 

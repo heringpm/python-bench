@@ -263,8 +263,15 @@ def main() -> int:
     poller = threading.Thread(target=_poll_loop, args=(collector, stop_event), daemon=True)
     poller.start()
 
-    server = socketserver.ThreadingTCPServer(("0.0.0.0", args.port), _make_handler(collector))
-    server.allow_reuse_address = True
+    # allow_reuse_address must be a class attribute set before construction
+    # (ThreadingTCPServer.__init__ binds immediately) - setting the instance
+    # attribute afterwards is too late to affect SO_REUSEADDR, so a socket
+    # left in TIME_WAIT by a prior crashed/killed agent run would make this
+    # bind fail with "Address already in use".
+    class _ReusableServer(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+
+    server = _ReusableServer(("0.0.0.0", args.port), _make_handler(collector))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
