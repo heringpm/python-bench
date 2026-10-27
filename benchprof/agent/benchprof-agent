@@ -96,15 +96,25 @@ capture_config() {
 
 start() {
   : > "$PIDFILE"
-  if command -v sadc >/dev/null 2>&1; then
-    sadc -S XALL 1 "$RUNDIR/sa.$HOST" </dev/null >/dev/null 2>&1 &
+  # sadc is sysstat's private data-collector binary - it's intentionally
+  # not installed into $PATH on RHEL/CentOS/Debian (it lives under
+  # /usr/lib64/sa or /usr/lib/sysstat, meant to be invoked by sar/cron
+  # internals, not run directly) - so `command -v sadc` alone misses it
+  # even when the sysstat package is installed. Check the well-known
+  # package paths too before giving up.
+  SADC=""
+  for cand in sadc /usr/lib64/sa/sadc /usr/lib/sa/sadc /usr/lib/sysstat/sadc; do
+    if command -v "$cand" >/dev/null 2>&1; then SADC="$cand"; break; fi
+  done
+  if [ -n "$SADC" ]; then
+    "$SADC" -S XALL 1 "$RUNDIR/sa.$HOST" </dev/null >/dev/null 2>&1 &
     echo "sadc:$!" >> "$PIDFILE"
   else
     # sysstat isn't installed on this node - sar.<host>.csv/sar_net will
     # be empty and sar.py will silently contribute no rows. Leave a
     # marker so collect.py/report.py can surface a warning instead of
     # the sar panels just looking blank with no explanation.
-    echo "sadc not found in PATH on $HOST" > "$RUNDIR/sar.$HOST.MISSING"
+    echo "sadc not found on $HOST (checked PATH and common sysstat install dirs)" > "$RUNDIR/sar.$HOST.MISSING"
   fi
   # S_TIME_FORMAT=ISO forces the Time column to ISO 8601
   # ("2026-10-27T18:10:43") instead of the locale-dependent default
