@@ -85,7 +85,7 @@ class _ControllerCollector:
         with self.lock:
             values = dict(self.values)
         lines = []
-        for metric_name, _ in _METRIC_COLUMNS:
+        for _, metric_name in _METRIC_COLUMNS:
             lines.append(f"# TYPE {metric_name} gauge")
             for (m, entity), v in sorted(values.items()):
                 if m != metric_name:
