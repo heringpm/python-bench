@@ -11,11 +11,23 @@ across nodes onto one line per entity/category since the per-node
 breakdown isn't the point of those panels (the per-node System CPU /
 ThreadCPU panels are).
 
+In report.html each panel is rendered as its own independent, standalone
+Plotly chart inside a "card" with a Maximize button (toggles the card to
+cover the viewport and tells Plotly to resize into it), so any single
+panel can be drilled into at full size instead of being squeezed into a
+fixed-height row shared with every other panel.
+
 CPUBreakdown answers "what's actually consuming CPU" directly by
 re-classifying pidstat ProcessCPU rows (see _classify_process) into
 elbencho / Lustre client kernel threads / everything else, summed across
-all nodes - instead of making people cross-reference the System CPU
-panel (whole-node %user/%system/%idle) against the ThreadCPU panel
+all nodes. It's drawn as a 0-100% stacked area chart (Plotly
+stackgroup + groupnorm="percent") rather than plain lines: on a
+multi-node, multi-CPU cluster the raw summed %CPU values are tiny
+relative to total capacity (e.g. a few hundred out of 48 CPUs * 16
+nodes * 100%), so plotted as lines they look like everything is idle.
+Normalizing to 100% of *classified* CPU time shows the proportions that
+actually matter - instead of making people cross-reference the System
+CPU panel (whole-node %user/%system/%idle) against the ThreadCPU panel
 (top busiest threads by name) by hand.
 
 The ThreadCPU panel is capped to the top THREAD_TOP_N (node, thread)
@@ -128,11 +140,66 @@ def _load_merged(run_dir: Path) -> List[MetricRow]:
     return read_rows(merged_path)
 
 
+# Panels drawn as a 0-100% stacked area chart (Plotly stackgroup +
+# groupnorm="percent") instead of plain lines, because plotting their
+# series as raw lines on the same y-scale as everything else makes them
+# look flat/idle (e.g. CPUBreakdown's 3 categories summed across a
+# 48-CPU*16-node cluster can top out around a few hundred "%CPU" while
+# the axis implicitly invites comparison against 100%). Stacking and
+# normalizing to 100% answers "where does the time actually go" directly,
+# independent of how many CPUs/nodes are involved.
+_STACKED_PERCENT_METRICS = {"CPUBreakdown"}
+
+
+def _panel_figure(go, metric: str, title: str, unit: str, series: Dict[str, Dict[float, float]]):
+    """Builds one standalone Plotly figure for a single panel."""
+    fig = go.Figure()
+
+    avg = {k: (sum(v.values()) / len(v) if v else 0.0) for k, v in series.items()}
+    stacked_percent = metric in _STACKED_PERCENT_METRICS
+    # Stacked-percent panels have few, meaningful categories (all drawn),
+    # so they skip the "hide all but the busiest" treatment that noisy
+    # per-node/per-thread panels need.
+    visible_keys = set(series) if stacked_percent else set(
+        sorted(avg, key=avg.get, reverse=True)[:VISIBLE_TOP_N]
+    )
+
+    for key in sorted(series):
+        pts = sorted(series[key].items())
+        if not pts:
+            continue
+        xs, ys = zip(*pts)
+        trace_kwargs = dict(
+            x=list(xs), y=list(ys), mode="lines", name=key,
+            visible=True if key in visible_keys else "legendonly",
+        )
+        if stacked_percent:
+            trace_kwargs.update(stackgroup="cpu", groupnorm="percent")
+        fig.add_trace(go.Scatter(**trace_kwargs))
+
+    y_axis_opts = dict(title_text="% of classified CPU time" if stacked_percent else unit)
+    if stacked_percent:
+        y_axis_opts.update(range=[0, 100], ticksuffix="%")
+    fig.update_yaxes(**y_axis_opts)
+    fig.update_xaxes(title_text="Elapsed (s)")
+
+    legend_title = metric
+    if not stacked_percent and len(series) > VISIBLE_TOP_N:
+        legend_title += " (top busiest shown)"
+    fig.update_layout(
+        title=title,
+        hovermode="x unified",
+        legend=dict(title=dict(text=legend_title)),
+        margin=dict(t=50, b=40, l=60, r=20),
+        height=420,
+    )
+    return fig
+
+
 def build_html(run_dir, out_name: str = "report.html") -> Path:
     try:
         import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
-        import plotly.io as pio
+        import plotly.offline as pyo
     except ImportError as e:
         raise SystemExit(
             "benchprof report: plotly is required for report.html "
@@ -142,59 +209,81 @@ def build_html(run_dir, out_name: str = "report.html") -> Path:
     run_dir = Path(run_dir)
     rows = _load_merged(run_dir)
 
-    n = len(PANELS)
-    fig = make_subplots(
-        rows=n, cols=1, shared_xaxes=True,
-        subplot_titles=[title for _, title, _ in PANELS],
-        vertical_spacing=max(0.4 / n, 0.04),
-    )
-
-    legend_layout: Dict[str, dict] = {}
-    for i, (metric, _title, unit) in enumerate(PANELS, start=1):
+    panel_divs = []
+    for i, (metric, title, unit) in enumerate(PANELS):
         sum_across_nodes = metric in _SUM_ACROSS_NODES_METRICS
         series = _bucket(rows, metric, sum_across_nodes)
-
-        # Rank series by average value so the busiest ones are the ones
-        # shown by default; the rest start hidden in the legend instead
-        # of cluttering the plot (click to reveal).
-        avg = {k: (sum(v.values()) / len(v) if v else 0.0) for k, v in series.items()}
-        visible_keys = set(sorted(avg, key=avg.get, reverse=True)[:VISIBLE_TOP_N])
-
-        legend_name = "legend" if i == 1 else f"legend{i}"
-        yaxis_key = "yaxis" if i == 1 else f"yaxis{i}"
-        domain = fig.layout[yaxis_key].domain  # [y0, y1] fraction of figure height for this row
-
-        for key in sorted(series):
-            pts = sorted(series[key].items())
-            if not pts:
-                continue
-            xs, ys = zip(*pts)
-            fig.add_trace(go.Scatter(
-                x=list(xs), y=list(ys), mode="lines", name=key,
-                legend=legend_name,
-                visible=True if key in visible_keys else "legendonly",
-            ), row=i, col=1)
-        fig.update_yaxes(title_text=unit, row=i, col=1)
-
-        legend_layout[legend_name] = dict(
-            title=dict(text=metric + (" (top busiest shown)" if len(series) > VISIBLE_TOP_N else "")),
-            y=domain[1], yanchor="top", x=1.02, xanchor="left",
-            font=dict(size=10),
+        if not series:
+            continue
+        fig = _panel_figure(go, metric, title, unit, series)
+        div_html = pyo.plot(
+            fig, output_type="div", include_plotlyjs=False,
+            div_id=f"panel-{i}",
         )
+        panel_divs.append(div_html)
 
-    fig.update_layout(
-        height=340 * n,
-        title="benchprof report",
-        xaxis_title="Elapsed (s)",
-        hovermode="x unified",
-        margin=dict(r=220),  # room for the per-panel legends on the right
-        **legend_layout,
+    # Each panel is its own independent Plotly chart in its own
+    # "card" <div>, with a maximize button that toggles a fixed,
+    # viewport-covering CSS class on that card (and tells Plotly to
+    # resize into the new space) so you can drill into any single
+    # chart's detail without the clutter of every other panel.
+    cards_html = "\n".join(
+        f'<div class="panel-card">'
+        f'<button class="maximize-btn" onclick="toggleMaximize(this)">&#x26F6; Maximize</button>'
+        f'{div}'
+        f'</div>'
+        for div in panel_divs
     )
-    for ax in fig.select_xaxes():
-        ax.update(matches="x")
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>benchprof report</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  body {{ font-family: sans-serif; margin: 20px; background: #f7f7f9; }}
+  h1 {{ margin-bottom: 20px; }}
+  .panel-card {{
+    position: relative; background: #fff; border: 1px solid #ddd;
+    border-radius: 6px; margin-bottom: 20px; padding: 10px 10px 0 10px;
+  }}
+  .panel-card.maximized {{
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 1000; margin: 0; border-radius: 0; overflow: auto;
+  }}
+  .maximize-btn {{
+    position: absolute; top: 14px; right: 14px; z-index: 10;
+    cursor: pointer; font-size: 12px; padding: 4px 8px;
+    background: #eee; border: 1px solid #ccc; border-radius: 4px;
+  }}
+  .maximize-btn:hover {{ background: #ddd; }}
+</style>
+</head>
+<body>
+<h1>benchprof report</h1>
+{cards_html}
+<script>
+function toggleMaximize(btn) {{
+  var card = btn.closest('.panel-card');
+  var wasMaximized = card.classList.contains('maximized');
+  document.querySelectorAll('.panel-card.maximized').forEach(function(c) {{
+    if (c !== card) {{ c.classList.remove('maximized'); }}
+  }});
+  card.classList.toggle('maximized', !wasMaximized);
+  btn.innerHTML = card.classList.contains('maximized') ? '&#x2715; Restore' : '&#x26F6; Maximize';
+  var plot = card.querySelector('.js-plotly-plot');
+  if (plot && window.Plotly) {{
+    setTimeout(function() {{ window.Plotly.Plots.resize(plot); }}, 0);
+  }}
+}}
+</script>
+</body>
+</html>
+"""
 
     out_path = run_dir / out_name
-    pio.write_html(fig, file=str(out_path), auto_open=False)
+    out_path.write_text(html)
     print(f"Wrote {out_path}")
     return out_path
 
