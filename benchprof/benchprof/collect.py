@@ -93,6 +93,17 @@ def stop_agents(config: BenchprofConfig, hosts: List[str], keep_raw: bool, dry_r
     _remote_exec(config, hosts, cmd, dry_run)
 
 
+def abort_agents(config: BenchprofConfig, hosts: List[str], dry_run: bool) -> None:
+    """Best-effort emergency teardown used when a run is interrupted
+    (Ctrl-C) or fails partway through: kill -9 every collector on every
+    host immediately, skipping stop()'s normal sadf/perf-script
+    post-processing (which assumes a clean, completed run and can itself
+    hang). Safe to call even if nothing is running."""
+    agent_name = Path(config.agent_path).name
+    cmd = f"{config.remote_run_dir}/{agent_name} abort --rundir {config.remote_run_dir}"
+    _remote_exec(config, hosts, cmd, dry_run)
+
+
 def start_elbencho_service(config: BenchprofConfig, hosts: List[str], dry_run: bool) -> None:
     """Distributed elbencho needs a persistent `elbencho --service` daemon
     running on every client before the controller's --hostsfile command can
@@ -144,50 +155,69 @@ def run_benchmark(config: BenchprofConfig, hosts: List[str], label: str, profile
     run_id = make_run_id()
     run_dir = setup_run_dir(config, run_id)
 
-    push_agent(config, hosts, dry_run)
-    start_agents(config, hosts, profile, perf_freq, dry_run)
-
-    print("Starting elbencho service on clients...")
-    start_elbencho_service(config, hosts, dry_run)
-
-    print(f"Settling {SETTLE_BEFORE_S}s before elbencho so panels show an idle baseline...")
-    if not dry_run:
-        time.sleep(SETTLE_BEFORE_S)
-
-    elbencho_args = _ensure_mkdirs(elbencho_args)
-
-    t0 = time.time()
-    elbencho_cmd = (
-        f"{config.elbencho_path} --hostsfile {config.machine_file} "
-        f"--livecsv {run_dir}/elbencho_live.csv --livecsvex --liveint 1000 "
-        # --live1n: one line per --liveint update, written to stderr and
-        # never overwritten in place (elbencho's default full-screen live
-        # display redraws via ANSI escapes, which can look like "nothing is
-        # happening" depending on the terminal/session) - this gives clear,
-        # scrollable, loggable console progress alongside the CSV.
-        f"--live1n {elbencho_args}"
-    )
-    print(f"Running: {elbencho_cmd}")
+    agents_started = False
     try:
-        run_cmd(elbencho_cmd, dry_run=dry_run)
-    finally:
-        print("Stopping elbencho service on clients...")
-        stop_elbencho_service(config, hosts, dry_run)
+        push_agent(config, hosts, dry_run)
+        start_agents(config, hosts, profile, perf_freq, dry_run)
+        agents_started = True
 
-    print(f"Settling {SETTLE_AFTER_S}s after elbencho so panels show an idle tail...")
-    if not dry_run:
-        time.sleep(SETTLE_AFTER_S)
+        print("Starting elbencho service on clients...")
+        start_elbencho_service(config, hosts, dry_run)
 
-    stop_agents(config, hosts, keep_raw=False, dry_run=dry_run)
-    gather(config, hosts, run_dir, dry_run)
-    write_meta(run_dir, run_id, label, hosts, profile, t0, elbencho_cmd)
+        print(f"Settling {SETTLE_BEFORE_S}s before elbencho so panels show an idle baseline...")
+        if not dry_run:
+            time.sleep(SETTLE_BEFORE_S)
 
-    if profile == "full" and not dry_run:
-        from benchprof.flame import build_phase_flames
-        build_phase_flames(run_dir)
+        elbencho_args = _ensure_mkdirs(elbencho_args)
 
-    print(f"Run complete: {run_dir}")
-    return run_dir
+        t0 = time.time()
+        elbencho_cmd = (
+            f"{config.elbencho_path} --hostsfile {config.machine_file} "
+            f"--livecsv {run_dir}/elbencho_live.csv --livecsvex --liveint 1000 "
+            # --live1n: one line per --liveint update, written to stderr and
+            # never overwritten in place (elbencho's default full-screen live
+            # display redraws via ANSI escapes, which can look like "nothing is
+            # happening" depending on the terminal/session) - this gives clear,
+            # scrollable, loggable console progress alongside the CSV.
+            f"--live1n {elbencho_args}"
+        )
+        print(f"Running: {elbencho_cmd}")
+        try:
+            run_cmd(elbencho_cmd, dry_run=dry_run)
+        finally:
+            print("Stopping elbencho service on clients...")
+            stop_elbencho_service(config, hosts, dry_run)
+
+        print(f"Settling {SETTLE_AFTER_S}s after elbencho so panels show an idle tail...")
+        if not dry_run:
+            time.sleep(SETTLE_AFTER_S)
+
+        stop_agents(config, hosts, keep_raw=False, dry_run=dry_run)
+        gather(config, hosts, run_dir, dry_run)
+        write_meta(run_dir, run_id, label, hosts, profile, t0, elbencho_cmd)
+
+        if profile == "full" and not dry_run:
+            from benchprof.flame import build_phase_flames
+            build_phase_flames(run_dir)
+
+        print(f"Run complete: {run_dir}")
+        return run_dir
+    except (Exception, KeyboardInterrupt):
+        # Ctrl-C or any failure partway through: make sure nothing is left
+        # running on the clients (elbencho --service daemon, sadc/pidstat/
+        # perf/links/lctl loops) rather than leaking background processes
+        # that pile up across retries and block future runs.
+        print("Run interrupted/failed - cleaning up remote processes...")
+        try:
+            stop_elbencho_service(config, hosts, dry_run)
+        except Exception as cleanup_err:
+            print(f"  warning: failed to stop elbencho service: {cleanup_err}")
+        if agents_started:
+            try:
+                abort_agents(config, hosts, dry_run)
+            except Exception as cleanup_err:
+                print(f"  warning: failed to abort agents: {cleanup_err}")
+        raise
 
 
 _RANGE_RE = re.compile(r"^([^\[\]]*)\[(\d+)-(\d+)\](.*)$")

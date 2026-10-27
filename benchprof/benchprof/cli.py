@@ -103,9 +103,15 @@ def main(argv=None) -> int:
     front, elbencho_args = _split_passthrough(argv)
     parser = build_parser()
     args = parser.parse_args(front)
-    if args.command == "run":
-        return cmd_run(args, elbencho_args)
-    return args.func(args)
+    try:
+        if args.command == "run":
+            return cmd_run(args, elbencho_args)
+        return args.func(args)
+    except KeyboardInterrupt:
+        # run_benchmark() already cleans up remote processes before
+        # re-raising; just avoid an ugly traceback on exit here.
+        print("\nbenchprof: interrupted", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

@@ -155,9 +155,33 @@ stop() {
   fi
 }
 
+abort() {
+  # Fast, best-effort teardown for error/Ctrl-C cleanup: kill everything
+  # we know about immediately (no sadf/perf-script post-processing, which
+  # can itself hang or take a while), then fall back to pkill in case the
+  # pidfile is missing/stale. Safe to call even if nothing is running.
+  if [ -f "$PIDFILE" ]; then
+    while IFS=: read -r name pid; do
+      [ -n "$pid" ] || continue
+      kill -9 "$pid" 2>/dev/null
+    done < "$PIDFILE"
+    rm -f "$PIDFILE"
+  fi
+  pkill -9 -f 'sadc -S XALL' 2>/dev/null
+  pkill -9 -f 'pidstat -t -u -h' 2>/dev/null
+  pkill -9 -f 'perf record .*cpu-clock' 2>/dev/null
+  # poll_links/start_lctl run as backgrounded functions of this same
+  # script, so they share its cmdline - this also catches the main
+  # "start" process (and any stray subshell loops) if the pidfile was
+  # missing/stale.
+  pkill -9 -f "benchprof-agent start --rundir $RUNDIR" 2>/dev/null
+  true
+}
+
 case "$CMD" in
   start) start ;;
   stop) stop ;;
+  abort) abort ;;
   config) capture_config ;;
-  *) echo "usage: benchprof-agent {start|stop|config} --rundir DIR [--profile light|full]" >&2; exit 2 ;;
+  *) echo "usage: benchprof-agent {start|stop|abort|config} --rundir DIR [--profile light|full]" >&2; exit 2 ;;
 esac
