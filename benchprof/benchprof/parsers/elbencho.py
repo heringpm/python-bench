@@ -59,6 +59,23 @@ def parse_elbencho(path: str, hosts: List[str], t0: float, phases: Optional[list
     if not p.is_file() or p.stat().st_size == 0:
         return rows
 
+    # With --livecsvex, elbencho emits a "Total" row (the real
+    # rate/IOPS/latency numbers, pre-aggregated across all ranks) plus one
+    # row per rank in the same interval. In standalone/thread mode the
+    # per-rank rows leave MiB/s/IOPS/latency blank (they only carry
+    # DoneBytes) so only the Total row ever contributes - but in
+    # distributed/service mode (--hostsfile) the per-rank rows *do* carry
+    # real populated values too, so counting both the Total row and the
+    # per-rank rows double-counts every metric (Total already equals the
+    # sum of the per-rank rows). To avoid that, rows are first grouped by
+    # interval (RuntimeMS+Phase) and, within each group, the Total row is
+    # only used as a fallback for columns that have no real per-rank data;
+    # whenever per-rank rows carry real values for a column, those are
+    # used instead (and the Total row's value for that column is dropped)
+    # so throughput/IOPS/etc. are counted exactly once, either per-node or
+    # once as a controller-level aggregate.
+    groups: "dict" = {}
+    order: List[tuple] = []
     with open(p, newline="") as f:
         reader = csv.DictReader(f)
         if not reader.fieldnames:
@@ -67,27 +84,39 @@ def parse_elbencho(path: str, hosts: List[str], t0: float, phases: Optional[list
             dt = _parse_iso((d.get("ISO Date") or "").strip())
             if dt is None:
                 continue
-            elapsed = dt.timestamp() - t0
+            key = (d.get("RuntimeMS"), (d.get("Phase") or "").strip())
+            if key not in groups:
+                groups[key] = {"dt": dt, "total": [], "rank": []}
+                order.append(key)
             rank_raw = (d.get("Rank") or "").strip()
-            # With --livecsvex, elbencho emits a "Total" row (the real
-            # rate/IOPS/latency numbers, pre-aggregated across all ranks)
-            # plus one row per rank in the same interval - but in practice
-            # the per-rank rows leave MiB/s/IOPS/latency blank (they only
-            # carry DoneBytes), so there's no double-counting risk: the
-            # per-column "skip if raw == ''" check below means only the
-            # Total row actually contributes Throughput/IOPS/latency rows;
-            # per-rank rows would only contribute if elbencho starts
-            # populating those columns per-rank too.
-            node = "controller"
-            if rank_raw not in ("", "-1", "Total"):
-                try:
-                    rank = int(rank_raw)
-                    node = hosts[rank] if 0 <= rank < len(hosts) else f"rank{rank}"
-                except ValueError:
-                    node = f"rank{rank_raw}"
+            if rank_raw in ("", "-1", "Total"):
+                groups[key]["total"].append(d)
+            else:
+                groups[key]["rank"].append(d)
+
+    for key in order:
+        g = groups[key]
+        dt = g["dt"]
+        elapsed = dt.timestamp() - t0
+
+        # Which columns have real (non-blank) data in the per-rank rows for
+        # this interval - those columns are taken from the per-rank rows
+        # only, and skipped on the Total row to avoid double-counting.
+        rank_has_col = {
+            col for col, _, _ in _METRIC_COLUMNS
+            for d in g["rank"]
+            if (d.get(col) or "").strip() != ""
+        }
+
+        for d in g["rank"]:
+            rank_raw = (d.get("Rank") or "").strip()
+            try:
+                rank = int(rank_raw)
+                node = hosts[rank] if 0 <= rank < len(hosts) else f"rank{rank}"
+            except ValueError:
+                node = f"rank{rank_raw}"
             entity = (d.get("MixType") or "").strip() or "io"
             phase = (d.get("Phase") or "").strip()
-
             for col, metric, unit in _METRIC_COLUMNS:
                 raw = (d.get(col) or "").strip()
                 if raw == "":
@@ -98,6 +127,25 @@ def parse_elbencho(path: str, hosts: List[str], t0: float, phases: Optional[list
                     continue
                 rows.append(MetricRow(
                     node=node, timestamp=dt.isoformat(), elapsed_sec=elapsed,
+                    phase=phase, source="elbencho", metric=metric, entity=entity,
+                    value=value, unit=unit,
+                ))
+
+        for d in g["total"]:
+            entity = (d.get("MixType") or "").strip() or "io"
+            phase = (d.get("Phase") or "").strip()
+            for col, metric, unit in _METRIC_COLUMNS:
+                if col in rank_has_col:
+                    continue
+                raw = (d.get(col) or "").strip()
+                if raw == "":
+                    continue
+                try:
+                    value = float(raw)
+                except ValueError:
+                    continue
+                rows.append(MetricRow(
+                    node="controller", timestamp=dt.isoformat(), elapsed_sec=elapsed,
                     phase=phase, source="elbencho", metric=metric, entity=entity,
                     value=value, unit=unit,
                 ))
