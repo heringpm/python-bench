@@ -47,6 +47,29 @@ def test_parse_elbencho_rank_mapping():
         check("elbencho elapsed_sec is 0 at t0", all(abs(r.elapsed_sec) < 1e-6 for r in rows))
 
 
+def test_parse_elbencho_tz_offset_and_total_rank():
+    # Real --livecsvex output: ISO date carries a "+0000" UTC offset, and
+    # each interval also includes a "Total" row that's elbencho's own
+    # pre-aggregated sum of the per-rank rows in the same file.
+    import calendar
+    t0 = calendar.timegm((2026, 10, 27, 18, 10, 49))
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "live.csv"
+        p.write_text(
+            "ISO Date,Label,Phase,RuntimeMS,Rank,MixType,Done%,DoneBytes,MiB/s,IOPS,Entries,Entries/s,Lat Ent us,Lat IO us\n"
+            "2026-10-27T18:10:49.371+0000,,WRITE,1006,Total,,2,21884829696,200,200,0,0,0,38931\n"
+            "2026-10-27T18:10:49.371+0000,,WRITE,1006,0,,2,1319108608,100,100,0,0,0,38931\n"
+            "2026-10-27T18:10:49.371+0000,,WRITE,1006,1,,2,1319108608,100,100,0,0,0,38931\n"
+        )
+        rows = parse_elbencho(str(p), ["client01", "client02"], t0=t0, phases=[])
+        check("elbencho tz-offset rows parsed (not dropped)", len(rows) > 0)
+        check("elbencho Total rank row skipped (no double count)",
+              not any(r.node == "controller" for r in rows))
+        tput = {r.node: r.value for r in rows if r.metric == "Throughput"}
+        check("elbencho tz-offset elapsed_sec is ~0 at t0", all(abs(r.elapsed_sec) < 1.0 for r in rows))
+        check("elbencho per-rank throughput preserved", tput == {"client01": 100.0, "client02": 100.0})
+
+
 def test_parse_sar_cpu_mem_net():
     with tempfile.TemporaryDirectory() as d:
         sar_p = Path(d) / "sar.csv"
@@ -86,6 +109,26 @@ def test_parse_pidstat_process_and_thread_rows():
         check("pidstat emits one process row and one thread row", len(proc_rows) == 1 and len(thread_rows) == 1)
         check("pidstat ProcessCPU value", proc_rows[0].value == 7.0 and proc_rows[0].entity == "elbencho")
         check("pidstat ThreadCPU entity includes tid", thread_rows[0].entity == "worker/101")
+
+
+def test_parse_pidstat_iso_time_format():
+    # S_TIME_FORMAT=ISO output (agent sets this): without it, pidstat's
+    # default locale time ("06:10:43 PM") has an embedded space, which
+    # shifts every whitespace-split column and silently corrupts all rows.
+    import calendar
+    t0 = calendar.timegm((2026, 10, 27, 18, 10, 43))
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "pidstat.log"
+        p.write_text(
+            "Linux 5.14.0 (h1)  10/27/2026  _x86_64_ (48 CPU)\n\n"
+            "#          Time   UID      TGID       TID    %usr %system  %guest   %wait    %CPU   CPU  Command\n"
+            "2026-10-27T18:10:43     0         100         -    5.00    2.00    0.00    0.00    7.00     1  elbencho\n"
+            "2026-10-27T18:10:43     0           -       101    5.00    2.00    0.00    0.00    7.00     1  |__worker\n"
+        )
+        rows = parse_pidstat(str(p), "h1", t0=t0)
+        thread_rows = [r for r in rows if r.metric == "ThreadCPU"]
+        check("pidstat ISO time format parses rows", len(thread_rows) == 1)
+        check("pidstat ISO time elapsed_sec is 0 at t0", thread_rows and abs(thread_rows[0].elapsed_sec) < 1e-6)
 
 
 def test_parse_links_diff_and_unit_conversion():
@@ -172,8 +215,10 @@ def test_merge_run_end_to_end():
 
 if __name__ == "__main__":
     test_parse_elbencho_rank_mapping()
+    test_parse_elbencho_tz_offset_and_total_rank()
     test_parse_sar_cpu_mem_net()
     test_parse_pidstat_process_and_thread_rows()
+    test_parse_pidstat_iso_time_format()
     test_parse_links_diff_and_unit_conversion()
     test_parse_lctl_cumulative()
     test_extract_window_filters_by_sample_timestamp()

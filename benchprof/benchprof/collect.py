@@ -135,6 +135,18 @@ def gather(config: BenchprofConfig, hosts: List[str], run_dir: Path, dry_run: bo
     _remote_exec(config, hosts, f"rm -rf {config.remote_run_dir}", dry_run)
 
 
+def warn_missing_sar(run_dir: Path, hosts: List[str]) -> None:
+    """Print a warning if any client is missing `sadc` (sysstat), so the
+    resulting blank sar CPU/Memory report panels aren't a silent mystery."""
+    missing = [h for h in hosts if (run_dir / "nodes" / h / f"sar.{h}.MISSING").exists()]
+    if missing:
+        print(
+            f"benchprof: warning: sadc (sysstat) not found on {len(missing)} node(s) "
+            f"({', '.join(missing[:5])}{', ...' if len(missing) > 5 else ''}) - "
+            "CPU/Memory sar panels will be empty for them. Install sysstat to fix."
+        )
+
+
 def write_meta(run_dir: Path, run_id: str, label: str, hosts: List[str], profile: str,
                 t0: float, elbencho_cmd: str, phases: Optional[list] = None) -> None:
     meta = {
@@ -194,6 +206,7 @@ def run_benchmark(config: BenchprofConfig, hosts: List[str], label: str, profile
 
         stop_agents(config, hosts, keep_raw=False, dry_run=dry_run)
         gather(config, hosts, run_dir, dry_run)
+        warn_missing_sar(run_dir, hosts)
         write_meta(run_dir, run_id, label, hosts, profile, t0, elbencho_cmd)
 
         if profile == "full" and not dry_run:

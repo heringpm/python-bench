@@ -96,9 +96,21 @@ capture_config() {
 
 start() {
   : > "$PIDFILE"
-  sadc -S XALL 1 "$RUNDIR/sa.$HOST" </dev/null >/dev/null 2>&1 &
-  echo "sadc:$!" >> "$PIDFILE"
-  pidstat -t -u -h 1 </dev/null > "$RUNDIR/pidstat.$HOST.log" 2>/dev/null &
+  if command -v sadc >/dev/null 2>&1; then
+    sadc -S XALL 1 "$RUNDIR/sa.$HOST" </dev/null >/dev/null 2>&1 &
+    echo "sadc:$!" >> "$PIDFILE"
+  else
+    # sysstat isn't installed on this node - sar.<host>.csv/sar_net will
+    # be empty and sar.py will silently contribute no rows. Leave a
+    # marker so collect.py/report.py can surface a warning instead of
+    # the sar panels just looking blank with no explanation.
+    echo "sadc not found in PATH on $HOST" > "$RUNDIR/sar.$HOST.MISSING"
+  fi
+  # S_TIME_FORMAT=ISO forces the Time column to ISO 8601
+  # ("2026-10-27T18:10:43") instead of the locale-dependent default
+  # (e.g. "06:10:43 PM" on this box), which pidstat.py can't parse - the
+  # extra "PM" token shifts every column, silently corrupting every row.
+  S_TIME_FORMAT=ISO pidstat -t -u -h 1 </dev/null > "$RUNDIR/pidstat.$HOST.log" 2>/dev/null &
   echo "pidstat:$!" >> "$PIDFILE"
   # Explicitly redirect stdin/stdout/stderr here, not just inside the
   # functions: even though poll_links/start_lctl write their own output

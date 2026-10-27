@@ -57,7 +57,19 @@ def _bucket(rows: List[MetricRow], metric: str, sum_across_nodes: bool) -> Dict[
     return series
 
 
+def _warn_missing_sar(run_dir: Path) -> None:
+    missing = sorted(p.name.split(".")[1] for p in (run_dir / "nodes").glob("*/sar.*.MISSING"))
+    if missing:
+        print(
+            f"benchprof report: warning: sadc (sysstat) was not found on "
+            f"{len(missing)} node(s) during collection "
+            f"({', '.join(missing[:5])}{', ...' if len(missing) > 5 else ''}) - "
+            "CPU/Memory sar panels will be empty for them."
+        )
+
+
 def _load_merged(run_dir: Path) -> List[MetricRow]:
+    _warn_missing_sar(run_dir)
     merged_path = run_dir / "merged.csv"
     if not merged_path.exists():
         merge_run(run_dir)

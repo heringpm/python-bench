@@ -36,7 +36,16 @@ _METRIC_COLUMNS = [
 
 
 def _parse_iso(iso_date: str) -> Optional[datetime]:
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+    # Elbencho emits a numeric UTC offset (e.g. "+0000") with no colon,
+    # which strptime can only parse via "%z" - try offset-aware formats
+    # first, then fall back to the naive ones for older elbencho builds
+    # that don't include an offset at all.
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S.%f%z", "%Y-%m-%d %H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S",
+    ):
         try:
             return datetime.strptime(iso_date, fmt)
         except ValueError:
@@ -60,6 +69,14 @@ def parse_elbencho(path: str, hosts: List[str], t0: float, phases: Optional[list
                 continue
             elapsed = dt.timestamp() - t0
             rank_raw = (d.get("Rank") or "").strip()
+            if rank_raw == "Total":
+                # With --livecsvex this "Total" row is elbencho's own
+                # pre-aggregated sum of the per-rank rows emitted in the
+                # same file/interval. report.py's Throughput panel already
+                # sums per-rank rows across nodes, so keeping this row too
+                # would double-count every value - skip it; the per-rank
+                # rows below are the only source of truth here.
+                continue
             node = "controller"
             if rank_raw not in ("", "-1"):
                 try:
