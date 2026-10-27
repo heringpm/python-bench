@@ -20,6 +20,8 @@ from benchprof.parsers.links import parse_links
 from benchprof.parsers.lctl import parse_lctl
 from benchprof.merge import merge_run
 from benchprof.flame import extract_window
+from benchprof.report import _bucket, _classify_process
+from benchprof.schema import MetricRow
 import json
 
 FAILURES = []
@@ -174,6 +176,32 @@ def test_parse_pidstat_process_and_thread_rows():
         check("pidstat ThreadCPU entity includes tid", thread_rows[0].entity == "worker/101")
 
 
+def test_classify_process_and_cpu_breakdown_panel():
+    check("elbencho command classified as elbencho", _classify_process("elbencho") == "elbencho")
+    check("ptlrpcd command classified as Lustre/filesystem", _classify_process("ptlrpcd_0") == "Lustre/filesystem")
+    check("ll_ost_io command classified as Lustre/filesystem", _classify_process("ll_ost_io00_000") == "Lustre/filesystem")
+    check("bash command classified as Other processes", _classify_process("bash") == "Other processes")
+
+    rows = [
+        MetricRow(node="h1", timestamp="", elapsed_sec=0.0, phase="", source="pidstat",
+                   metric="ProcessCPU", entity="elbencho", value=50.0, unit="%"),
+        MetricRow(node="h1", timestamp="", elapsed_sec=0.0, phase="", source="pidstat",
+                   metric="ProcessCPU", entity="ptlrpcd_0", value=10.0, unit="%"),
+        MetricRow(node="h2", timestamp="", elapsed_sec=0.0, phase="", source="pidstat",
+                   metric="ProcessCPU", entity="ptlrpcd_1", value=5.0, unit="%"),
+        MetricRow(node="h1", timestamp="", elapsed_sec=0.0, phase="", source="pidstat",
+                   metric="ProcessCPU", entity="bash", value=1.0, unit="%"),
+        # A different metric with the same entity name shouldn't leak in.
+        MetricRow(node="h1", timestamp="", elapsed_sec=0.0, phase="", source="sar",
+                   metric="CPU", entity="elbencho", value=999.0, unit="%"),
+    ]
+    series = _bucket(rows, "CPUBreakdown", sum_across_nodes=True)
+    check("CPUBreakdown has exactly 3 categories", set(series.keys()) == {"elbencho", "Lustre/filesystem", "Other processes"})
+    check("CPUBreakdown elbencho value", series["elbencho"][0] == 50.0)
+    check("CPUBreakdown Lustre value sums across nodes", series["Lustre/filesystem"][0] == 15.0)
+    check("CPUBreakdown Other value", series["Other processes"][0] == 1.0)
+
+
 def test_parse_pidstat_iso_time_format():
     # S_TIME_FORMAT=ISO output (agent sets this): without it, pidstat's
     # default locale time ("06:10:43 PM") has an embedded space, which
@@ -284,6 +312,7 @@ if __name__ == "__main__":
     test_parse_sar_timestamp_with_timezone_suffix()
     test_parse_sar_disambiguation_suffix()
     test_parse_pidstat_process_and_thread_rows()
+    test_classify_process_and_cpu_breakdown_panel()
     test_parse_pidstat_iso_time_format()
     test_parse_links_diff_and_unit_conversion()
     test_parse_lctl_cumulative()
