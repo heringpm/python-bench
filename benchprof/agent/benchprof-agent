@@ -2,24 +2,29 @@
 # benchprof-agent - start/stop collectors on one client for benchprof.
 #
 # Usage:
-#   benchprof-agent start --rundir DIR --profile light|full [--perf-freq HZ]
+#   benchprof-agent start --rundir DIR --profile light|full [--perf-freq HZ] [--export-port PORT]
 #   benchprof-agent stop  --rundir DIR [--keep-raw]
 #   benchprof-agent config --rundir DIR   # one-shot run-config capture
 #
 # Collectors (profile light): sar (sadc), pidstat, IB/RoCE link counters,
-# lctl snapshots. Profile full additionally starts `perf record`.
+# lctl snapshots. Profile full additionally starts `perf record`. If
+# --export-port is given, also starts benchprof-exporter, a live
+# Prometheus /metrics HTTP endpoint on that port (CPU/Mem from /proc,
+# process CPU from pidstat.log, link throughput from links.csv) so a
+# Prometheus server can scrape this node while the run is in progress.
 # PIDs of every background collector are appended to $RUNDIR/agent.pids so
 # `stop` can SIGINT them cleanly (sadc/perf flush their output on SIGINT).
 set -u
 HOST=$(hostname -s)
 CMD="${1:-}"; shift || true
-RUNDIR="" PROFILE="light" PERF_FREQ=99 KEEP_RAW=0
+RUNDIR="" PROFILE="light" PERF_FREQ=99 KEEP_RAW=0 EXPORT_PORT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --rundir) RUNDIR="$2"; shift 2 ;;
     --profile) PROFILE="$2"; shift 2 ;;
     --perf-freq) PERF_FREQ="$2"; shift 2 ;;
     --keep-raw) KEEP_RAW=1; shift ;;
+    --export-port) EXPORT_PORT="$2"; shift 2 ;;
     *) echo "benchprof-agent: unknown arg $1" >&2; exit 2 ;;
   esac
 done
@@ -135,6 +140,18 @@ start() {
   echo "links:$!" >> "$PIDFILE"
   start_lctl </dev/null >/dev/null 2>&1 &
   echo "lctl:$!" >> "$PIDFILE"
+  if [ -n "$EXPORT_PORT" ]; then
+    # Live Prometheus /metrics endpoint for this node (CPU/Mem from
+    # /proc, process CPU from pidstat.log, link throughput from
+    # links.csv) - lets an existing Prometheus server scrape this node
+    # while the run is still in progress, instead of only being able to
+    # see data once `benchprof report` runs against the finished
+    # merged.csv. Script lives next to this one (pushed alongside it by
+    # collect.py's push_agent()).
+    python3 "$(dirname "$0")/benchprof-exporter" --rundir "$RUNDIR" --host "$HOST" --port "$EXPORT_PORT" \
+      </dev/null >"$RUNDIR/exporter.$HOST.log" 2>&1 &
+    echo "exporter:$!" >> "$PIDFILE"
+  fi
   capture_config
   if [ "$PROFILE" = "full" ]; then
     perf record -e cpu-clock -F "$PERF_FREQ" -a -g -k CLOCK_REALTIME \
@@ -192,6 +209,7 @@ abort() {
   pkill -9 -f 'sadc -S XALL' 2>/dev/null
   pkill -9 -f 'pidstat -t -u -h' 2>/dev/null
   pkill -9 -f 'perf record .*cpu-clock' 2>/dev/null
+  pkill -9 -f 'benchprof-exporter --rundir' 2>/dev/null
   # poll_links/start_lctl run as backgrounded functions of this same
   # script, so they share its cmdline - this also catches the main
   # "start" process (and any stray subshell loops) if the pidfile was

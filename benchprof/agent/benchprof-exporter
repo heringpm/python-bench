@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""benchprof-exporter - lightweight Prometheus /metrics HTTP endpoint for
+one benchprof client node, started by benchprof-agent when `start
+--export-port PORT` is given.
+
+Why this exists: benchprof's normal path (sar/pidstat/links/lctl write
+local files that only get parsed into panels by `benchprof report` after
+the whole run finishes and files are rsynced back) is fine for a
+post-run report, but gives you nothing to look at *while* a long run is
+in progress. This exposes a handful of live gauges instead:
+
+  - benchprof_cpu_percent{node,mode}        from /proc/stat deltas
+  - benchprof_mem_percent{node}             from /proc/meminfo
+  - benchprof_process_cpu_percent{node,command}  latest pidstat process row
+  - benchprof_net_link_gbps{node,device,port,direction}  from links.csv
+
+CPU/Mem are read straight from /proc rather than via sadc/sadf, so this
+has no dependency on sysstat being installed (unlike the sar.py path) -
+every quirk chased down there (missing sadc, %sys vs %system, combined
+rows, disambiguation suffixes) simply doesn't apply here.
+
+Stdlib only (http.server + threading) - no pip/package install required
+on client nodes, matching benchprof-agent's dependency-free design.
+"""
+import argparse
+import http.server
+import socketserver
+import sys
+import threading
+import time
+from pathlib import Path
+
+POLL_S = 1.0
+_BYTES_PER_UNIT = {"ib": 4, "roce": 1}
+
+
+class Collector:
+    def __init__(self, host: str, rundir: Path):
+        self.host = host
+        self.rundir = rundir
+        self.lock = threading.Lock()
+        self.cpu_pct = {}
+        self.mem_pct = None
+        self.process_cpu = {}
+        self.link_gbps = {}
+        self._prev_stat = None
+        self._prev_links = {}  # (device,port,direction) -> (epoch, bytes)
+
+    def poll_cpu(self):
+        try:
+            with open("/proc/stat") as f:
+                line = f.readline()
+        except OSError:
+            return
+        parts = line.split()
+        if len(parts) < 8 or parts[0] != "cpu":
+            return
+        vals = [int(x) for x in parts[1:8]]  # user nice system idle iowait irq softirq
+        names = ["user", "nice", "system", "idle", "iowait", "irq", "softirq"]
+        if self._prev_stat is not None:
+            deltas = [v - p for v, p in zip(vals, self._prev_stat)]
+            total = sum(deltas)
+            if total > 0:
+                with self.lock:
+                    self.cpu_pct = {n: 100.0 * d / total for n, d in zip(names, deltas)}
+        self._prev_stat = vals
+
+    def poll_mem(self):
+        meminfo = {}
+        try:
+            with open("/proc/meminfo") as f:
+                for line in f:
+                    k, _, v = line.partition(":")
+                    try:
+                        meminfo[k.strip()] = float(v.strip().split()[0])
+                    except (ValueError, IndexError):
+                        continue
+        except OSError:
+            return
+        total = meminfo.get("MemTotal")
+        avail = meminfo.get("MemAvailable")
+        if total and avail is not None and total > 0:
+            with self.lock:
+                self.mem_pct = 100.0 * (total - avail) / total
+
+    def poll_pidstat(self):
+        # Same header/row layout as parsers/pidstat.py, inlined here since
+        # client nodes don't have the benchprof python package installed -
+        # only process-level rows (TID == "-") are kept, re-read whole file
+        # each tick (pidstat.log is small for a benchmark run's duration).
+        path = self.rundir / f"pidstat.{self.host}.log"
+        if not path.is_file():
+            return
+        header = []
+        latest_time = None
+        latest = {}
+        try:
+            with open(path) as f:
+                for raw in f:
+                    line = raw.rstrip("\n")
+                    if not line or line.startswith("Linux") or line.startswith("Average"):
+                        continue
+                    if line.lstrip().startswith("#"):
+                        header = line.lstrip("#").split()
+                        continue
+                    if not header:
+                        continue
+                    parts = line.split()
+                    if len(parts) < len(header):
+                        continue
+                    fixed = parts[:len(header) - 1]
+                    command = " ".join(parts[len(header) - 1:])
+                    d = dict(zip(header[:-1], fixed))
+                    d[header[-1]] = command
+                    if d.get("TID", "-") != "-":
+                        continue
+                    t = d.get("Time", "")
+                    try:
+                        cpu = float(d.get("%CPU", ""))
+                    except ValueError:
+                        continue
+                    if t != latest_time:
+                        latest_time = t
+                        latest = {}
+                    latest[d.get("Command", "?")] = cpu
+        except OSError:
+            return
+        if latest:
+            with self.lock:
+                self.process_cpu = latest
+
+    def poll_links(self):
+        path = self.rundir / f"links.{self.host}.csv"
+        if not path.is_file():
+            return
+        latest_by_key = {}
+        try:
+            with open(path) as f:
+                header_line = f.readline()
+                cols = [c.strip() for c in header_line.strip().split(",")]
+                for line in f:
+                    vals = line.strip().split(",")
+                    if len(vals) != len(cols):
+                        continue
+                    d = dict(zip(cols, vals))
+                    try:
+                        epoch = float(d["epoch"])
+                        b = float(d["bytes_raw"]) * _BYTES_PER_UNIT.get(d.get("kind", "ib"), 1)
+                    except (KeyError, ValueError):
+                        continue
+                    key = (d.get("device", "?"), d.get("port", "?"), d.get("direction", "?"))
+                    cur = latest_by_key.get(key)
+                    if cur is None or epoch > cur[0]:
+                        latest_by_key[key] = (epoch, b)
+        except OSError:
+            return
+        updated = {}
+        for key, (epoch, b) in latest_by_key.items():
+            prev = self._prev_links.get(key)
+            if prev is not None:
+                prev_epoch, prev_b = prev
+                dt = epoch - prev_epoch
+                delta = b - prev_b
+                if dt > 0 and delta >= 0:
+                    updated[key] = (delta * 8) / 1e9 / dt
+            self._prev_links[key] = (epoch, b)
+        if updated:
+            with self.lock:
+                self.link_gbps.update(updated)
+
+    def poll_once(self):
+        self.poll_cpu()
+        self.poll_mem()
+        self.poll_pidstat()
+        self.poll_links()
+
+    def render(self) -> str:
+        with self.lock:
+            cpu_pct = dict(self.cpu_pct)
+            mem_pct = self.mem_pct
+            process_cpu = dict(self.process_cpu)
+            link_gbps = dict(self.link_gbps)
+
+        lines = [
+            "# HELP benchprof_cpu_percent Live system CPU time breakdown (/proc/stat)",
+            "# TYPE benchprof_cpu_percent gauge",
+        ]
+        for mode, pct in sorted(cpu_pct.items()):
+            lines.append(f'benchprof_cpu_percent{{node="{self.host}",mode="{mode}"}} {pct:.3f}')
+
+        if mem_pct is not None:
+            lines += [
+                "# HELP benchprof_mem_percent Live memory used percent (/proc/meminfo)",
+                "# TYPE benchprof_mem_percent gauge",
+                f'benchprof_mem_percent{{node="{self.host}"}} {mem_pct:.3f}',
+            ]
+
+        lines += [
+            "# HELP benchprof_process_cpu_percent Live per-process %CPU (pidstat)",
+            "# TYPE benchprof_process_cpu_percent gauge",
+        ]
+        for command, pct in sorted(process_cpu.items()):
+            safe = command.replace('"', "'")
+            lines.append(f'benchprof_process_cpu_percent{{node="{self.host}",command="{safe}"}} {pct:.3f}')
+
+        lines += [
+            "# HELP benchprof_net_link_gbps Live IB/RoCE link throughput",
+            "# TYPE benchprof_net_link_gbps gauge",
+        ]
+        for (device, port, direction), gbps in sorted(link_gbps.items()):
+            lines.append(
+                f'benchprof_net_link_gbps{{node="{self.host}",device="{device}",port="{port}",'
+                f'direction="{direction}"}} {gbps:.6f}'
+            )
+        return "\n".join(lines) + "\n"
+
+
+def _poll_loop(collector: Collector, stop_event: threading.Event):
+    while not stop_event.is_set():
+        collector.poll_once()
+        stop_event.wait(POLL_S)
+
+
+def _make_handler(collector: Collector):
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.rstrip("/") in ("", "/metrics"):
+                body = collector.render().encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; version=0.0.4")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif self.path == "/healthz":
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ok")
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, fmt, *args):
+            pass  # keep stdout/stderr clean
+
+    return Handler
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--rundir", required=True)
+    ap.add_argument("--host", required=True)
+    ap.add_argument("--port", type=int, required=True)
+    args = ap.parse_args()
+
+    collector = Collector(args.host, Path(args.rundir))
+    stop_event = threading.Event()
+    poller = threading.Thread(target=_poll_loop, args=(collector, stop_event), daemon=True)
+    poller.start()
+
+    server = socketserver.ThreadingTCPServer(("0.0.0.0", args.port), _make_handler(collector))
+    server.allow_reuse_address = True
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop_event.set()
+        server.shutdown()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
