@@ -1,0 +1,8 @@
+{
+  "run_dir": "/work/home/phering/benchprof_runs",
+  "machine_file": "./machinefile.16",
+  "elbencho_path": "/work/bin/benchmark_bin/elbencho",
+  "agent_path": "./benchprof/agent/benchprof-agent",
+  "remote_run_dir": "/tmp/benchprof",
+  "use_clush": true
+}

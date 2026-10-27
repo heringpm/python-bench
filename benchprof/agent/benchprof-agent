@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# benchprof-agent - start/stop collectors on one client for benchprof.
+#
+# Usage:
+#   benchprof-agent start --rundir DIR --profile light|full [--perf-freq HZ]
+#   benchprof-agent stop  --rundir DIR [--keep-raw]
+#   benchprof-agent config --rundir DIR   # one-shot run-config capture
+#
+# Collectors (profile light): sar (sadc), pidstat, IB/RoCE link counters,
+# lctl snapshots. Profile full additionally starts `perf record`.
+# PIDs of every background collector are appended to $RUNDIR/agent.pids so
+# `stop` can SIGINT them cleanly (sadc/perf flush their output on SIGINT).
+set -u
+HOST=$(hostname -s)
+CMD="${1:-}"; shift || true
+RUNDIR="" PROFILE="light" PERF_FREQ=99 KEEP_RAW=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --rundir) RUNDIR="$2"; shift 2 ;;
+    --profile) PROFILE="$2"; shift 2 ;;
+    --perf-freq) PERF_FREQ="$2"; shift 2 ;;
+    --keep-raw) KEEP_RAW=1; shift ;;
+    *) echo "benchprof-agent: unknown arg $1" >&2; exit 2 ;;
+  esac
+done
+[ -n "$RUNDIR" ] || { echo "benchprof-agent: --rundir is required" >&2; exit 2; }
+mkdir -p "$RUNDIR"
+PIDFILE="$RUNDIR/agent.pids"
+
+link_layer_for_ib() {
+  # Prints "ib" or "roce" for the first active IB verbs device found, or
+  # nothing if none. RoCE devices report link_layer=Ethernet.
+  for f in /sys/class/infiniband/*/ports/*/link_layer; do
+    [ -r "$f" ] || continue
+    val=$(cat "$f" 2>/dev/null)
+    if [ "$val" = "InfiniBand" ]; then echo ib; return; fi
+    if [ "$val" = "Ethernet" ]; then echo roce; return; fi
+  done
+}
+
+poll_links() {
+  # Samples IB (/sys counters, units of 4 bytes) and RoCE (ethtool -S)
+  # byte counters every 1s and writes raw counter deltas; links.py handles
+  # wraparound/reset and converts to Gb/s.
+  out="$RUNDIR/links.$HOST.csv"
+  echo "epoch,device,port,direction,bytes_raw,kind" > "$out"
+  while :; do
+    ts=$(date +%s)
+    for f in /sys/class/infiniband/*/ports/*/counters/port_xmit_data /sys/class/infiniband/*/ports/*/counters/port_rcv_data; do
+      [ -r "$f" ] || continue
+      dev=$(echo "$f" | awk -F/ '{print $5}')
+      port=$(echo "$f" | awk -F/ '{print $7}')
+      dir=$(basename "$f" | sed -e 's/port_xmit_data/tx/' -e 's/port_rcv_data/rx/')
+      val=$(cat "$f" 2>/dev/null || echo "")
+      [ -n "$val" ] && echo "$ts,$dev,$port,$dir,$val,ib" >> "$out"
+    done
+    sleep 1
+  done
+}
+
+start_lctl() {
+  out="$RUNDIR/lctl.$HOST.log"
+  : > "$out"
+  while :; do
+    {
+      echo "### $(date +%s)"
+      lctl get_param osc.*.rpc_stats 2>/dev/null
+      lctl get_param osc.*.stats 2>/dev/null
+      lctl get_param llite.*.stats 2>/dev/null
+      lctl get_param sptlrpc.encrypt_page_pools 2>/dev/null
+    } >> "$out"
+    sleep 5
+  done
+}
+
+capture_config() {
+  out="$RUNDIR/config.$HOST.txt"
+  {
+    echo "### lctl sptlrpc flavor"; lctl get_param -R 'mdc.*.*' 'osc.*.*' 2>/dev/null | grep -i sptlrpc
+    echo "### checksums"; lctl get_param osc.*.checksum_type osc.*.checksums 2>/dev/null
+    echo "### rpc tuning"; lctl get_param osc.*.max_rpcs_in_flight osc.*.max_pages_per_rpc 2>/dev/null
+    echo "### crypto drivers"; cat /proc/crypto 2>/dev/null | awk '/^name/{n=$3} /^driver/{print n, $3}'
+    echo "### lscpu"; lscpu 2>/dev/null
+    echo "### kernel"; uname -r
+    echo "### lustre version"; cat /sys/fs/lustre/version 2>/dev/null || lctl get_param version 2>/dev/null
+    echo "### chrony"; chronyc tracking 2>/dev/null
+    echo "### link_layer"; link_layer_for_ib
+  } > "$out"
+}
+
+start() {
+  : > "$PIDFILE"
+  sadc -S XALL 1 "$RUNDIR/sa.$HOST" >/dev/null 2>&1 &
+  echo "sadc:$!" >> "$PIDFILE"
+  pidstat -t -u -h 1 > "$RUNDIR/pidstat.$HOST.log" 2>/dev/null &
+  echo "pidstat:$!" >> "$PIDFILE"
+  poll_links &
+  echo "links:$!" >> "$PIDFILE"
+  start_lctl &
+  echo "lctl:$!" >> "$PIDFILE"
+  capture_config
+  if [ "$PROFILE" = "full" ]; then
+    perf record -e cpu-clock -F "$PERF_FREQ" -a -g -k CLOCK_REALTIME \
+      -o "$RUNDIR/perf.$HOST.data" -- sleep 86400 >/dev/null 2>&1 &
+    echo "perf:$!" >> "$PIDFILE"
+  fi
+}
+
+stop() {
+  [ -f "$PIDFILE" ] || { echo "benchprof-agent: no $PIDFILE, nothing to stop" >&2; return 0; }
+  while IFS=: read -r name pid; do
+    [ -n "$pid" ] || continue
+    kill -INT "$pid" 2>/dev/null
+  done < "$PIDFILE"
+  sleep 1
+  while IFS=: read -r name pid; do
+    [ -n "$pid" ] || continue
+    kill -0 "$pid" 2>/dev/null && kill -TERM "$pid" 2>/dev/null
+  done < "$PIDFILE"
+  wait 2>/dev/null
+
+  if [ -s "$RUNDIR/sa.$HOST" ]; then
+    sadf -d -- -u ALL -r -B -q -n DEV "$RUNDIR/sa.$HOST" > "$RUNDIR/sar.$HOST.csv" 2>/dev/null
+  fi
+
+  if [ -f "$RUNDIR/perf.$HOST.data" ]; then
+    perf script -F comm,tid,cpu,time,ip,sym,dso -i "$RUNDIR/perf.$HOST.data" \
+      > "$RUNDIR/stacks.$HOST.txt" 2>"$RUNDIR/perf.$HOST.script.err"
+    gzip -f "$RUNDIR/stacks.$HOST.txt"
+    if [ "$KEEP_RAW" -eq 0 ]; then rm -f "$RUNDIR/perf.$HOST.data"; fi
+  fi
+}
+
+case "$CMD" in
+  start) start ;;
+  stop) stop ;;
+  config) capture_config ;;
+  *) echo "usage: benchprof-agent {start|stop|config} --rundir DIR [--profile light|full]" >&2; exit 2 ;;
+esac
