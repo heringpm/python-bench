@@ -37,24 +37,35 @@ class _ControllerCollector:
         self.values = {}  # (metric_name, entity) -> float
 
     def poll_once(self):
+        # Broad except around the whole body (not just the file open) is
+        # deliberate: elbencho appends a new line every --liveint and this
+        # runs concurrently, so a read can race a partial/interrupted write
+        # (truncated last row, mid-flush header, odd encoding). csv.Error
+        # and friends aren't OSErrors, and without this they'd propagate
+        # out of poll_once(), kill the daemon poller thread for good (no
+        # auto-restart), and silently freeze /metrics for the rest of the
+        # run even though the file keeps being written correctly afterwards.
+        try:
+            self._poll_once_unsafe()
+        except Exception:
+            pass
+
+    def _poll_once_unsafe(self):
         if not self.csv_path.is_file() or self.csv_path.stat().st_size == 0:
             return
         latest_by_entity = {}
-        try:
-            with open(self.csv_path, newline="") as f:
-                reader = csv.DictReader(f)
-                if not reader.fieldnames:
-                    return
-                for d in reader:
-                    rank_raw = (d.get("Rank") or "").strip()
-                    # Only the Total row carries real values (see
-                    # parsers/elbencho.py) - per-rank rows leave these blank.
-                    if rank_raw not in ("", "-1", "Total"):
-                        continue
-                    entity = (d.get("MixType") or "").strip() or "io"
-                    latest_by_entity[entity] = d
-        except OSError:
-            return
+        with open(self.csv_path, newline="") as f:
+            reader = csv.DictReader(f)
+            if not reader.fieldnames:
+                return
+            for d in reader:
+                rank_raw = (d.get("Rank") or "").strip()
+                # Only the Total row carries real values (see
+                # parsers/elbencho.py) - per-rank rows leave these blank.
+                if rank_raw not in ("", "-1", "Total"):
+                    continue
+                entity = (d.get("MixType") or "").strip() or "io"
+                latest_by_entity[entity] = d
 
         updated = {}
         for entity, d in latest_by_entity.items():

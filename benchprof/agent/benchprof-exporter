@@ -169,10 +169,16 @@ class Collector:
                 self.link_gbps.update(updated)
 
     def poll_once(self):
-        self.poll_cpu()
-        self.poll_mem()
-        self.poll_pidstat()
-        self.poll_links()
+        # Each poll_X() is wrapped individually (not just here) so one
+        # bad tick on one source (e.g. a truncated pidstat/links line read
+        # mid-write) can't raise out of poll_once(), kill the daemon poller
+        # thread for good, and silently freeze /metrics for the rest of the
+        # run while the other sources keep working fine.
+        for fn in (self.poll_cpu, self.poll_mem, self.poll_pidstat, self.poll_links):
+            try:
+                fn()
+            except Exception:
+                pass
 
     def render(self) -> str:
         with self.lock:
