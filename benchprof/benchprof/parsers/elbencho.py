@@ -69,16 +69,17 @@ def parse_elbencho(path: str, hosts: List[str], t0: float, phases: Optional[list
                 continue
             elapsed = dt.timestamp() - t0
             rank_raw = (d.get("Rank") or "").strip()
-            if rank_raw == "Total":
-                # With --livecsvex this "Total" row is elbencho's own
-                # pre-aggregated sum of the per-rank rows emitted in the
-                # same file/interval. report.py's Throughput panel already
-                # sums per-rank rows across nodes, so keeping this row too
-                # would double-count every value - skip it; the per-rank
-                # rows below are the only source of truth here.
-                continue
+            # With --livecsvex, elbencho emits a "Total" row (the real
+            # rate/IOPS/latency numbers, pre-aggregated across all ranks)
+            # plus one row per rank in the same interval - but in practice
+            # the per-rank rows leave MiB/s/IOPS/latency blank (they only
+            # carry DoneBytes), so there's no double-counting risk: the
+            # per-column "skip if raw == ''" check below means only the
+            # Total row actually contributes Throughput/IOPS/latency rows;
+            # per-rank rows would only contribute if elbencho starts
+            # populating those columns per-rank too.
             node = "controller"
-            if rank_raw not in ("", "-1"):
+            if rank_raw not in ("", "-1", "Total"):
                 try:
                     rank = int(rank_raw)
                     node = hosts[rank] if 0 <= rank < len(hosts) else f"rank{rank}"

@@ -60,7 +60,11 @@ def _rows_from_block(header: List[str], data: List[str], node: str, t0: float,
 
 _CPU_FIELDS = [
     ("%usr", "CPU", lambda d: "user", "%"),
+    # sysstat names this field "%system" on some versions/builds and
+    # "%sys" on others (e.g. sysstat 12.5.4 on EL9) - accept both so the
+    # parser doesn't silently drop system CPU on whichever isn't present.
     ("%system", "CPU", lambda d: "system", "%"),
+    ("%sys", "CPU", lambda d: "system", "%"),
     ("%iowait", "CPU", lambda d: "iowait", "%"),
     ("%idle", "CPU", lambda d: "idle", "%"),
 ]
@@ -86,18 +90,27 @@ _NET_FIELDS = [
 
 
 def _pick_metric_map(header: List[str]):
+    """Returns the combined list of (field, metric, entity_fn, unit) tuples
+    for every category present in this header. `sadf -d -h -- -u ALL -r -B
+    -q` prints CPU, memory, paging, and load fields all in *one* combined
+    row/header (not one header block per activity as earlier sysstat
+    versions/invocations did), so a header can match more than one
+    category at once - checking them independently (instead of returning
+    on the first match) is required or every category after the first
+    silently loses its data."""
     hset = set(header)
+    combined = []
     if "%idle" in hset:
-        return _CPU_FIELDS
+        combined.extend(_CPU_FIELDS)
     if "%memused" in hset:
-        return _MEM_FIELDS
+        combined.extend(_MEM_FIELDS)
     if "pgfree/s" in hset:
-        return _PAGING_FIELDS
+        combined.extend(_PAGING_FIELDS)
     if "ldavg-1" in hset:
-        return _LOAD_FIELDS
+        combined.extend(_LOAD_FIELDS)
     if "rxkB/s" in hset:
-        return _NET_FIELDS
-    return None
+        combined.extend(_NET_FIELDS)
+    return combined or None
 
 
 def _parse_sadf_file(path: Path, node: str, t0: float) -> List[MetricRow]:

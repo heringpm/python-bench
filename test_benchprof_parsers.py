@@ -49,8 +49,9 @@ def test_parse_elbencho_rank_mapping():
 
 def test_parse_elbencho_tz_offset_and_total_rank():
     # Real --livecsvex output: ISO date carries a "+0000" UTC offset, and
-    # each interval also includes a "Total" row that's elbencho's own
-    # pre-aggregated sum of the per-rank rows in the same file.
+    # each interval includes a "Total" row (the only one with real
+    # MiB/s/IOPS/latency numbers) plus one row per rank that leaves those
+    # columns blank (only DoneBytes is populated per-rank).
     import calendar
     t0 = calendar.timegm((2026, 10, 27, 18, 10, 49))
     with tempfile.TemporaryDirectory() as d:
@@ -58,16 +59,14 @@ def test_parse_elbencho_tz_offset_and_total_rank():
         p.write_text(
             "ISO Date,Label,Phase,RuntimeMS,Rank,MixType,Done%,DoneBytes,MiB/s,IOPS,Entries,Entries/s,Lat Ent us,Lat IO us\n"
             "2026-10-27T18:10:49.371+0000,,WRITE,1006,Total,,2,21884829696,200,200,0,0,0,38931\n"
-            "2026-10-27T18:10:49.371+0000,,WRITE,1006,0,,2,1319108608,100,100,0,0,0,38931\n"
-            "2026-10-27T18:10:49.371+0000,,WRITE,1006,1,,2,1319108608,100,100,0,0,0,38931\n"
+            "2026-10-27T18:10:49.371+0000,,WRITE,1006,0,,2,1319108608,,,0,,,\n"
+            "2026-10-27T18:10:49.371+0000,,WRITE,1006,1,,2,1319108608,,,0,,,\n"
         )
         rows = parse_elbencho(str(p), ["client01", "client02"], t0=t0, phases=[])
         check("elbencho tz-offset rows parsed (not dropped)", len(rows) > 0)
-        check("elbencho Total rank row skipped (no double count)",
-              not any(r.node == "controller" for r in rows))
         tput = {r.node: r.value for r in rows if r.metric == "Throughput"}
         check("elbencho tz-offset elapsed_sec is ~0 at t0", all(abs(r.elapsed_sec) < 1.0 for r in rows))
-        check("elbencho per-rank throughput preserved", tput == {"client01": 100.0, "client02": 100.0})
+        check("elbencho Total row is the only Throughput source", tput == {"controller": 200.0})
 
 
 def test_parse_sar_cpu_mem_net():
@@ -92,6 +91,31 @@ def test_parse_sar_cpu_mem_net():
         check("sar CPU idle entity", cpu.get("idle") == 83.0)
         check("sar Memory used%", mem.get("used") == 33.0)
         check("sar NetworkIface eth0/rx", net.get("eth0/rx") == 1000.0)
+
+
+def test_parse_sar_combined_row_and_sys_field():
+    # Real `sadf -d -h -- -u ALL -r -B -q` output: CPU, memory, paging,
+    # and load all come back in a single combined header/row per
+    # timestamp (not one header block per activity), and the CPU field is
+    # named "%sys" (not "%system") on this sysstat build (12.5.4/EL9).
+    with tempfile.TemporaryDirectory() as d:
+        sar_p = Path(d) / "sar.csv"
+        sar_p.write_text(
+            "# hostname;interval;timestamp;CPU;%usr;%nice;%sys;%iowait;%steal;%irq;%soft;%guest;%gnice;%idle;"
+            "pgpgin/s;pgpgout/s;fault/s;majflt/s;pgfree/s;pgscank/s;pgscand/s;pgsteal/s;%vmeff;"
+            "kbmemfree;kbavail;kbmemused;%memused;kbbuffers;kbcached;kbcommit;%commit;kbactive;kbinact;kbdirty;"
+            "runq-sz;plist-sz;ldavg-1;ldavg-5;ldavg-15;blocked\n"
+            "h1;1;2023-11-14 22:13:20;-1;10.00;0.00;5.00;2.00;0.00;0.00;0.00;0.00;0.00;83.00;"
+            "128;49581;0;41916;0;0;0;0;0;"
+            "1000000;900000;500000;33.00;1000;2000;100000;5.00;300000;100000;10;"
+            "0;0;0.43;0.45;0.39;0\n"
+        )
+        rows = parse_sar(str(sar_p), "", "h1", t0=1700000000)
+        cpu = {r.entity: r.value for r in rows if r.metric == "CPU"}
+        mem = {r.entity: r.value for r in rows if r.metric == "Memory"}
+        check("sar combined-row CPU %sys -> system entity", cpu.get("system") == 5.00)
+        check("sar combined-row CPU idle still present", cpu.get("idle") == 83.0)
+        check("sar combined-row Memory also extracted (not dropped)", mem.get("used") == 33.0)
 
 
 def test_parse_pidstat_process_and_thread_rows():
@@ -217,6 +241,7 @@ if __name__ == "__main__":
     test_parse_elbencho_rank_mapping()
     test_parse_elbencho_tz_offset_and_total_rank()
     test_parse_sar_cpu_mem_net()
+    test_parse_sar_combined_row_and_sys_field()
     test_parse_pidstat_process_and_thread_rows()
     test_parse_pidstat_iso_time_format()
     test_parse_links_diff_and_unit_conversion()
