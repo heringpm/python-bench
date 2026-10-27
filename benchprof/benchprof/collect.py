@@ -68,6 +68,27 @@ def stop_agents(config: BenchprofConfig, hosts: List[str], keep_raw: bool, dry_r
     _remote_exec(config, hosts, cmd, dry_run)
 
 
+def start_elbencho_service(config: BenchprofConfig, hosts: List[str], dry_run: bool) -> None:
+    """Distributed elbencho needs a persistent `elbencho --service` daemon
+    running on every client before the controller's --hostsfile command can
+    connect to them (same pattern as benchmarks/elbencho.py). Without this,
+    the controller command has nothing to talk to - it can silently fail
+    to produce any progress output or real I/O."""
+    if config.use_clush:
+        cmd = f"clush --machinefile {config.machine_file} {config.elbencho_path} --service"
+    else:
+        cmd = f'pdsh -w {",".join(hosts)} {config.elbencho_path} --service'
+    run_cmd(cmd, dry_run=dry_run)
+
+
+def stop_elbencho_service(config: BenchprofConfig, hosts: List[str], dry_run: bool) -> None:
+    if config.use_clush:
+        cmd = f"clush --machinefile {config.machine_file} killall elbencho"
+    else:
+        cmd = f'pdsh -w {",".join(hosts)} killall elbencho'
+    run_cmd(cmd, dry_run=dry_run)
+
+
 def gather(config: BenchprofConfig, hosts: List[str], run_dir: Path, dry_run: bool) -> None:
     """Copy each client's collected files back into run_dir/nodes/<host>/,
     then clean up the remote run dir."""
@@ -101,6 +122,9 @@ def run_benchmark(config: BenchprofConfig, hosts: List[str], label: str, profile
     push_agent(config, hosts, dry_run)
     start_agents(config, hosts, profile, perf_freq, dry_run)
 
+    print("Starting elbencho service on clients...")
+    start_elbencho_service(config, hosts, dry_run)
+
     print(f"Settling {SETTLE_BEFORE_S}s before elbencho so panels show an idle baseline...")
     if not dry_run:
         time.sleep(SETTLE_BEFORE_S)
@@ -117,7 +141,11 @@ def run_benchmark(config: BenchprofConfig, hosts: List[str], label: str, profile
         f"--live1n {elbencho_args}"
     )
     print(f"Running: {elbencho_cmd}")
-    run_cmd(elbencho_cmd, dry_run=dry_run)
+    try:
+        run_cmd(elbencho_cmd, dry_run=dry_run)
+    finally:
+        print("Stopping elbencho service on clients...")
+        stop_elbencho_service(config, hosts, dry_run)
 
     print(f"Settling {SETTLE_AFTER_S}s after elbencho so panels show an idle tail...")
     if not dry_run:
