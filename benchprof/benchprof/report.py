@@ -199,7 +199,6 @@ def _panel_figure(go, metric: str, title: str, unit: str, series: Dict[str, Dict
 def build_html(run_dir, out_name: str = "report.html") -> Path:
     try:
         import plotly.graph_objects as go
-        import plotly.offline as pyo
     except ImportError as e:
         raise SystemExit(
             "benchprof report: plotly is required for report.html "
@@ -216,8 +215,8 @@ def build_html(run_dir, out_name: str = "report.html") -> Path:
         if not series:
             continue
         fig = _panel_figure(go, metric, title, unit, series)
-        div_html = pyo.plot(
-            fig, output_type="div", include_plotlyjs=False,
+        div_html = fig.to_html(
+            full_html=False, include_plotlyjs=False,
             div_id=f"panel-{i}",
         )
         panel_divs.append(div_html)
