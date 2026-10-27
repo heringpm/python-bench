@@ -118,6 +118,21 @@ def test_parse_sar_combined_row_and_sys_field():
         check("sar combined-row Memory also extracted (not dropped)", mem.get("used") == 33.0)
 
 
+def test_parse_sar_timestamp_with_timezone_suffix():
+    # Real sadf -d output includes a trailing timezone name in the
+    # timestamp field ("2026-10-27 18:51:21 UTC") - without stripping it,
+    # every row (not just CPU) silently fails to parse and is dropped.
+    with tempfile.TemporaryDirectory() as d:
+        sar_p = Path(d) / "sar.csv"
+        sar_p.write_text(
+            "# hostname;interval;timestamp;CPU;%usr;%nice;%sys;%iowait;%steal;%irq;%soft;%guest;%gnice;%idle\n"
+            "h1;1;2026-10-27 18:51:21 UTC;-1;10.00;0.00;5.00;2.00;0.00;0.00;0.00;0.00;0.00;83.00\n"
+        )
+        rows = parse_sar(str(sar_p), "", "h1", t0=1700000000)
+        cpu = {r.entity: r.value for r in rows if r.metric == "CPU"}
+        check("sar timestamp with UTC suffix parses (row not dropped)", cpu.get("idle") == 83.0)
+
+
 def test_parse_pidstat_process_and_thread_rows():
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "pidstat.log"
@@ -242,6 +257,7 @@ if __name__ == "__main__":
     test_parse_elbencho_tz_offset_and_total_rank()
     test_parse_sar_cpu_mem_net()
     test_parse_sar_combined_row_and_sys_field()
+    test_parse_sar_timestamp_with_timezone_suffix()
     test_parse_pidstat_process_and_thread_rows()
     test_parse_pidstat_iso_time_format()
     test_parse_links_diff_and_unit_conversion()

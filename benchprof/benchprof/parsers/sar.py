@@ -34,8 +34,15 @@ def _rows_from_block(header: List[str], data: List[str], node: str, t0: float,
     # timestamp column's own header name varies by locale/version, so
     # just use the 3rd field positionally).
     ts_raw = data[2] if len(data) > 2 else ""
-    if " " in ts_raw:
-        date_part, time_part = ts_raw.split(" ", 1)
+    # sadf -d's timestamp field is "YYYY-MM-DD HH:MM:SS" optionally
+    # followed by a timezone name ("... UTC") - split on whitespace and
+    # only use the first two tokens, since _parse_ts's formats don't
+    # (and can't reliably, given arbitrary tz abbreviations) account for
+    # a trailing zone name; without this every row here silently fails
+    # to parse and gets dropped.
+    ts_parts = ts_raw.split(" ")
+    if len(ts_parts) >= 2:
+        date_part, time_part = ts_parts[0], ts_parts[1]
     else:
         date_part, time_part = "", ts_raw
     dt = _parse_ts(date_part, time_part) if date_part else None
