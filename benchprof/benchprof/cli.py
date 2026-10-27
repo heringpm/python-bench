@@ -61,8 +61,9 @@ def cmd_compare(args) -> int:
 
 
 def cmd_flame(args) -> int:
-    print("benchprof flame: not implemented yet (milestone 3/6)", file=sys.stderr)
-    return 1
+    from benchprof import flame
+    svg = flame.build_flame_for_node(args.run_dir, args.node, args.from_s, args.to_s)
+    return 0 if svg else 1
 
 
 def build_parser() -> argparse.ArgumentParser:

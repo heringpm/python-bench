@@ -121,6 +121,10 @@ def run_benchmark(config: BenchprofConfig, hosts: List[str], label: str, profile
     gather(config, hosts, run_dir, dry_run)
     write_meta(run_dir, run_id, label, hosts, profile, t0, elbencho_cmd)
 
+    if profile == "full" and not dry_run:
+        from benchprof.flame import build_phase_flames
+        build_phase_flames(run_dir)
+
     print(f"Run complete: {run_dir}")
     return run_dir
 

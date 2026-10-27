@@ -4,8 +4,10 @@ long schema.
 `-h` prints one unix-epoch-timestamped header + data stream (no repeated
 per-interval headers), `-t` adds both TGID and TID columns so each row is
 either a process-level summary (TID == "-") or a per-thread breakdown
-(TGID == "-"). Only process-level rows are emitted as "ProcessCPU" to
-avoid double-counting a process's threads on top of its own total.
+(TGID == "-"). Process-level rows are emitted as "ProcessCPU" and
+per-thread rows as "ThreadCPU" (entity includes the TID to disambiguate
+same-named threads); report.py's per-thread panel sums neither on top of
+the other, it's the caller's choice which metric to chart.
 """
 
 from pathlib import Path
@@ -43,8 +45,6 @@ def parse_pidstat(path: str, node: str, t0: float) -> List[MetricRow]:
             d[header[-1]] = command
 
             tid = d.get("TID", "-")
-            if tid != "-":
-                continue  # per-thread row; skip, keep only process totals
 
             try:
                 epoch = float(d.get("Time", ""))
@@ -52,9 +52,17 @@ def parse_pidstat(path: str, node: str, t0: float) -> List[MetricRow]:
             except (TypeError, ValueError):
                 continue
 
-            rows.append(MetricRow(
-                node=node, timestamp="", elapsed_sec=epoch - t0, phase="",
-                source="pidstat", metric="ProcessCPU", entity=d.get("Command", "?"),
-                value=cpu_pct, unit="%",
-            ))
+            if tid == "-":
+                rows.append(MetricRow(
+                    node=node, timestamp="", elapsed_sec=epoch - t0, phase="",
+                    source="pidstat", metric="ProcessCPU", entity=d.get("Command", "?"),
+                    value=cpu_pct, unit="%",
+                ))
+            else:
+                command = d.get("Command", "?").lstrip("|_")
+                rows.append(MetricRow(
+                    node=node, timestamp="", elapsed_sec=epoch - t0, phase="",
+                    source="pidstat", metric="ThreadCPU", entity=f"{command}/{tid}",
+                    value=cpu_pct, unit="%",
+                ))
     return rows

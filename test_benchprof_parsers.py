@@ -6,6 +6,7 @@ merge.py. Run with:
     python3 test_benchprof_parsers.py
 """
 
+import gzip
 import sys
 import tempfile
 from pathlib import Path
@@ -18,6 +19,7 @@ from benchprof.parsers.pidstat import parse_pidstat
 from benchprof.parsers.links import parse_links
 from benchprof.parsers.lctl import parse_lctl
 from benchprof.merge import merge_run
+from benchprof.flame import extract_window
 import json
 
 FAILURES = []
@@ -69,7 +71,7 @@ def test_parse_sar_cpu_mem_net():
         check("sar NetworkIface eth0/rx", net.get("eth0/rx") == 1000.0)
 
 
-def test_parse_pidstat_skips_threads():
+def test_parse_pidstat_process_and_thread_rows():
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "pidstat.log"
         p.write_text(
@@ -79,8 +81,11 @@ def test_parse_pidstat_skips_threads():
             " 1700000000     0           -       101    5.00    2.00    0.00    0.00    7.00     1  |__worker\n"
         )
         rows = parse_pidstat(str(p), "h1", t0=1700000000)
-        check("pidstat only emits process-level rows", len(rows) == 1)
-        check("pidstat ProcessCPU value", rows[0].value == 7.0 and rows[0].entity == "elbencho")
+        proc_rows = [r for r in rows if r.metric == "ProcessCPU"]
+        thread_rows = [r for r in rows if r.metric == "ThreadCPU"]
+        check("pidstat emits one process row and one thread row", len(proc_rows) == 1 and len(thread_rows) == 1)
+        check("pidstat ProcessCPU value", proc_rows[0].value == 7.0 and proc_rows[0].entity == "elbencho")
+        check("pidstat ThreadCPU entity includes tid", thread_rows[0].entity == "worker/101")
 
 
 def test_parse_links_diff_and_unit_conversion():
@@ -125,6 +130,27 @@ def test_parse_lctl_cumulative():
         check("lctl entity includes device", rows[0].entity == "lustre-OST0000-osc/read")
 
 
+def test_extract_window_filters_by_sample_timestamp():
+    content = (
+        "elbencho 1234 [003] 1700000000.100000: cpu-clock:\n"
+        "\tffff1 funcA ([kernel.kallsyms])\n"
+        "\n"
+        "elbencho 1234 [003] 1700000005.200000: cpu-clock:\n"
+        "\tffff3 funcC ([kernel.kallsyms])\n"
+        "\n"
+        "elbencho 1234 [003] 1700000010.300000: cpu-clock:\n"
+        "\tffff4 funcD ([kernel.kallsyms])\n"
+    )
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "stacks.h1.txt.gz"
+        with gzip.open(p, "wt") as f:
+            f.write(content)
+        lines = "".join(extract_window(p, 1700000000, 1700000006))
+        check("extract_window keeps in-range sample (funcA)", "funcA" in lines)
+        check("extract_window keeps in-range sample (funcC)", "funcC" in lines)
+        check("extract_window drops out-of-range sample (funcD)", "funcD" not in lines)
+
+
 def test_merge_run_end_to_end():
     with tempfile.TemporaryDirectory() as d:
         run_dir = Path(d)
@@ -147,9 +173,10 @@ def test_merge_run_end_to_end():
 if __name__ == "__main__":
     test_parse_elbencho_rank_mapping()
     test_parse_sar_cpu_mem_net()
-    test_parse_pidstat_skips_threads()
+    test_parse_pidstat_process_and_thread_rows()
     test_parse_links_diff_and_unit_conversion()
     test_parse_lctl_cumulative()
+    test_extract_window_filters_by_sample_timestamp()
     test_merge_run_end_to_end()
 
     if FAILURES:
