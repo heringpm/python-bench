@@ -84,6 +84,16 @@
       "targets": [
         {"expr": "sum(benchprof_net_link_gbps) by (node, direction)", "legendFormat": "{{node}} {{direction}}"}
       ]
+    },
+    {
+      "id": 9, "title": "Encryption CPU overhead (SSK vs fscrypt, cluster avg)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 48},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "description": "Estimated %%CPU spent in encryption, from perf sample classification (see benchprof-exporter poll_crypto). ssk = Lustre GSS SSK RPC encrypt/decrypt (runs inside ptlrpcd/ll_ost*); fscrypt = filesystem-level encryption (runs inside the issuing I/O process, e.g. elbencho). This is CPU time that would not be spent without encryption enabled, so higher values here directly correspond to lower achievable throughput.",
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "custom": {"fillOpacity": 30, "stacking": {"mode": "normal", "group": "crypto"}}}, "overrides": []},
+      "targets": [
+        {"expr": "avg(benchprof_crypto_cpu_percent) by (kind)", "legendFormat": "{{kind}}"}
+      ]
     }
   ]
 }

@@ -13,6 +13,9 @@ in progress. This exposes a handful of live gauges instead:
   - benchprof_mem_percent{node}             from /proc/meminfo
   - benchprof_process_cpu_percent{node,command}  latest pidstat process row
   - benchprof_net_link_gbps{node,device,port,direction}  from links.csv
+  - benchprof_crypto_cpu_percent{node,kind}  from perf sample classification
+    (kind="ssk" for Lustre GSS SSK RPC encryption, kind="fscrypt" for
+    filesystem-level encryption) - see poll_crypto() below.
 
 CPU/Mem are read straight from /proc rather than via sadc/sadf, so this
 has no dependency on sysstat being installed (unlike the sar.py path) -
@@ -24,14 +27,55 @@ on client nodes, matching benchprof-agent's dependency-free design.
 """
 import argparse
 import http.server
+import os
+import re
+import shutil
 import socketserver
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
 
 POLL_S = 1.0
 _BYTES_PER_UNIT = {"ib": 4, "roce": 1}
+
+# Separate, coarser cadence for the encryption-CPU sampler (see poll_crypto
+# below) - it works by actually running `perf record` for a slice of every
+# tick, which has real CPU/overhead cost unlike the /proc-based pollers, so
+# it ticks less often and only samples for part of its own interval.
+CRYPTO_POLL_S = 2.0
+CRYPTO_SAMPLE_S = 1
+
+# SSK (Lustre's GSS "shared secret key" mechanism) and fscrypt don't run as
+# separate processes/threads - SSK encrypts/decrypts RPCs inline inside
+# existing Lustre threads (ptlrpcd, ll_ost*, ...) and fscrypt encrypts
+# inline in whichever task issued the I/O syscall - so pidstat-based
+# per-process CPU (poll_pidstat above) can't isolate either one; the only
+# place that information exists is in call stacks. This takes a short
+# `perf record -g` sample each tick and classifies samples by symbol:
+# stacks containing SSK-specific symbols (or generic crypto symbols inside
+# a Lustre client thread) count as "ssk"; stacks containing fscrypt-specific
+# symbols (or generic crypto symbols elsewhere) count as "fscrypt". Since
+# cpu-clock sampling is uniform across CPU time, the fraction of samples
+# matched is directly an estimate of %CPU spent in that category.
+_LUSTRE_PROCESS_PREFIXES = (
+    "ptlrpcd", "ll_ost", "ll_sa", "ll_cfg", "ll_agl", "ldlm_bl", "ldlm_cb",
+    "ldlm_cn", "osc_", "mdc_", "lov_", "lnet", "lquota", "kiblnd", "o2iblnd",
+    "ll_imp_inval", "jbd2",
+)
+_SSK_SYMBOL_RE = re.compile(r"gss_sk|sptlrpc|bulk_sec_desc", re.IGNORECASE)
+_FSCRYPT_SYMBOL_RE = re.compile(r"fscrypt", re.IGNORECASE)
+_GENERIC_CRYPTO_RE = re.compile(
+    r"aesni|aes_|_xts|\bxts_|\bgcm|\bccm|crypto_skcipher|crypto_shash|crypto_cipher",
+    re.IGNORECASE,
+)
+
+
+def _is_lustre_proc(command: str) -> bool:
+    c = command.lower()
+    return any(c.startswith(p) for p in _LUSTRE_PROCESS_PREFIXES)
 
 
 class Collector:
@@ -43,8 +87,11 @@ class Collector:
         self.mem_pct = None
         self.process_cpu = {}
         self.link_gbps = {}
+        self.crypto_pct = {}  # kind ("ssk"/"fscrypt") -> %CPU estimate
         self._prev_stat = None
         self._prev_links = {}  # (device,port,direction) -> (epoch, bytes)
+        self._perf_path = shutil.which("perf")
+        self._perf_warned = False
 
     def poll_cpu(self):
         try:
@@ -168,6 +215,72 @@ class Collector:
             with self.lock:
                 self.link_gbps.update(updated)
 
+    def poll_crypto(self):
+        # No perf on PATH (or not permitted) - stay silent rather than
+        # spamming every tick; other pollers keep working.
+        if not self._perf_path:
+            if not self._perf_warned:
+                print("benchprof-exporter: perf not found - encryption CPU "
+                      "metrics disabled", file=sys.stderr)
+                self._perf_warned = True
+            return
+
+        fd, data_path = tempfile.mkstemp(prefix=f"benchprof-crypto-{self.host}-", suffix=".data")
+        os.close(fd)
+        try:
+            rec = subprocess.run(
+                [self._perf_path, "record", "-e", "cpu-clock", "-F", "99",
+                 "-a", "-g", "-o", data_path, "--", "sleep", str(CRYPTO_SAMPLE_S)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            if rec.returncode != 0:
+                return
+            script = subprocess.run(
+                [self._perf_path, "script", "-i", data_path,
+                 "-F", "comm,ip,sym,dso"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            )
+        finally:
+            try:
+                os.remove(data_path)
+            except OSError:
+                pass
+
+        total = 0
+        counts = {"ssk": 0, "fscrypt": 0}
+        cur_command = ""
+        cur_is_crypto_kind = None
+        for line in script.stdout.splitlines():
+            if not line.strip():
+                if cur_is_crypto_kind is not None:
+                    counts[cur_is_crypto_kind] += 1
+                if cur_command:
+                    total += 1
+                cur_command = ""
+                cur_is_crypto_kind = None
+                continue
+            if not line.startswith((" ", "\t")):
+                # New sample header, e.g. "elbencho 12345 [003] 123.456: cpu-clock:"
+                cur_command = line.split()[0] if line.split() else ""
+                continue
+            if cur_is_crypto_kind is not None:
+                continue  # already classified this sample
+            if _SSK_SYMBOL_RE.search(line):
+                cur_is_crypto_kind = "ssk"
+            elif _FSCRYPT_SYMBOL_RE.search(line):
+                cur_is_crypto_kind = "fscrypt"
+            elif _GENERIC_CRYPTO_RE.search(line):
+                cur_is_crypto_kind = "ssk" if _is_lustre_proc(cur_command) else "fscrypt"
+        # Flush a trailing block with no final blank line.
+        if cur_command:
+            total += 1
+            if cur_is_crypto_kind is not None:
+                counts[cur_is_crypto_kind] += 1
+
+        if total > 0:
+            with self.lock:
+                self.crypto_pct = {k: 100.0 * v / total for k, v in counts.items()}
+
     def poll_once(self):
         # Each poll_X() is wrapped individually (not just here) so one
         # bad tick on one source (e.g. a truncated pidstat/links line read
@@ -186,6 +299,7 @@ class Collector:
             mem_pct = self.mem_pct
             process_cpu = dict(self.process_cpu)
             link_gbps = dict(self.link_gbps)
+            crypto_pct = dict(self.crypto_pct)
 
         lines = [
             "# HELP benchprof_cpu_percent Live system CPU time breakdown (/proc/stat)",
@@ -218,6 +332,17 @@ class Collector:
                 f'benchprof_net_link_gbps{{node="{self.host}",device="{device}",port="{port}",'
                 f'direction="{direction}"}} {gbps:.6f}'
             )
+        if crypto_pct:
+            lines += [
+                "# HELP benchprof_crypto_cpu_percent Live estimated CPU%% "
+                "spent in encryption (SSK/fscrypt), from perf sample "
+                "classification",
+                "# TYPE benchprof_crypto_cpu_percent gauge",
+            ]
+            for kind, pct in sorted(crypto_pct.items()):
+                lines.append(
+                    f'benchprof_crypto_cpu_percent{{node="{self.host}",kind="{kind}"}} {pct:.3f}'
+                )
         return "\n".join(lines) + "\n"
 
 
@@ -225,6 +350,18 @@ def _poll_loop(collector: Collector, stop_event: threading.Event):
     while not stop_event.is_set():
         collector.poll_once()
         stop_event.wait(POLL_S)
+
+
+def _crypto_poll_loop(collector: Collector, stop_event: threading.Event):
+    while not stop_event.is_set():
+        try:
+            collector.poll_crypto()
+        except Exception:
+            pass
+        # poll_crypto() itself blocks for ~CRYPTO_SAMPLE_S seconds (that's
+        # the perf recording window), so only wait out the remainder of the
+        # tick rather than the full interval on top of that.
+        stop_event.wait(max(0.0, CRYPTO_POLL_S - CRYPTO_SAMPLE_S))
 
 
 def _make_handler(collector: Collector):
@@ -262,6 +399,10 @@ def main() -> int:
     stop_event = threading.Event()
     poller = threading.Thread(target=_poll_loop, args=(collector, stop_event), daemon=True)
     poller.start()
+    crypto_poller = threading.Thread(
+        target=_crypto_poll_loop, args=(collector, stop_event), daemon=True
+    )
+    crypto_poller.start()
 
     # allow_reuse_address must be a class attribute set before construction
     # (ThreadingTCPServer.__init__ binds immediately) - setting the instance
