@@ -67,22 +67,31 @@ def setup_run_dir(config: BenchprofConfig, run_id: str) -> Path:
 
 
 def push_agent(config: BenchprofConfig, hosts: List[str], dry_run: bool) -> None:
-    """Copy benchprof-agent + make the remote run dir on every host."""
+    """Copy benchprof-agent (+ benchprof-exporter, which lives next to it and
+    is started by the agent when --export-port is given) and make the
+    remote run dir on every host."""
     _remote_exec(config, hosts, f"mkdir -p {config.remote_run_dir}", dry_run)
     agent_name = Path(config.agent_path).name
+    exporter_path = Path(config.agent_path).parent / "benchprof-exporter"
+    exporter_name = exporter_path.name
     if config.use_clush:
         run_cmd(f"clush -w {','.join(hosts)} --copy {config.agent_path} --dest {config.remote_run_dir}/{agent_name}", dry_run=dry_run)
+        run_cmd(f"clush -w {','.join(hosts)} --copy {exporter_path} --dest {config.remote_run_dir}/{exporter_name}", dry_run=dry_run)
     else:
         run_cmd(f"pdcp -w {','.join(hosts)} {config.agent_path} {config.remote_run_dir}/{agent_name}", dry_run=dry_run)
-    _remote_exec(config, hosts, f"chmod +x {config.remote_run_dir}/{agent_name}", dry_run)
+        run_cmd(f"pdcp -w {','.join(hosts)} {exporter_path} {config.remote_run_dir}/{exporter_name}", dry_run=dry_run)
+    _remote_exec(config, hosts, f"chmod +x {config.remote_run_dir}/{agent_name} {config.remote_run_dir}/{exporter_name}", dry_run)
 
 
-def start_agents(config: BenchprofConfig, hosts: List[str], profile: str, perf_freq: int, dry_run: bool) -> None:
+def start_agents(config: BenchprofConfig, hosts: List[str], profile: str, perf_freq: int, dry_run: bool,
+                  export_port: Optional[int] = None) -> None:
     agent_name = Path(config.agent_path).name
     cmd = (
         f"{config.remote_run_dir}/{agent_name} start --rundir {config.remote_run_dir} "
         f"--profile {profile} --perf-freq {perf_freq}"
     )
+    if export_port is not None:
+        cmd += f" --export-port {export_port}"
     _remote_exec(config, hosts, cmd, dry_run)
 
 
@@ -162,16 +171,34 @@ def write_meta(run_dir: Path, run_id: str, label: str, hosts: List[str], profile
 
 
 def run_benchmark(config: BenchprofConfig, hosts: List[str], label: str, profile: str,
-                   perf_freq: int, elbencho_args: str, dry_run: bool = False) -> Path:
-    """Full `benchprof run` sequence. Returns the local run directory."""
+                   perf_freq: int, elbencho_args: str, dry_run: bool = False,
+                   live_metrics_port: Optional[int] = None) -> Path:
+    """Full `benchprof run` sequence. Returns the local run directory.
+
+    If live_metrics_port is given, every client runs benchprof-exporter on
+    that port (CPU/Mem/process/link gauges) and the controller serves
+    elbencho throughput/IOPS gauges on live_metrics_port + 1, so an existing
+    Prometheus server can scrape all of them while the run is in progress
+    instead of only after `benchprof report` parses the finished files.
+    """
     run_id = make_run_id()
     run_dir = setup_run_dir(config, run_id)
 
     agents_started = False
+    controller_exporter = None
     try:
         push_agent(config, hosts, dry_run)
-        start_agents(config, hosts, profile, perf_freq, dry_run)
+        start_agents(config, hosts, profile, perf_freq, dry_run, export_port=live_metrics_port)
         agents_started = True
+
+        if live_metrics_port is not None and not dry_run:
+            from benchprof.live_exporter import ControllerExporter
+            controller_exporter = ControllerExporter(run_dir, live_metrics_port + 1)
+            controller_exporter.start()
+            print(
+                f"Live metrics: clients on port {live_metrics_port}, "
+                f"controller (elbencho throughput) on port {live_metrics_port + 1}"
+            )
 
         print("Starting elbencho service on clients...")
         start_elbencho_service(config, hosts, dry_run)
@@ -204,6 +231,10 @@ def run_benchmark(config: BenchprofConfig, hosts: List[str], label: str, profile
         if not dry_run:
             time.sleep(SETTLE_AFTER_S)
 
+        if controller_exporter is not None:
+            controller_exporter.stop()
+            controller_exporter = None
+
         stop_agents(config, hosts, keep_raw=False, dry_run=dry_run)
         gather(config, hosts, run_dir, dry_run)
         warn_missing_sar(run_dir, hosts)
@@ -221,6 +252,11 @@ def run_benchmark(config: BenchprofConfig, hosts: List[str], label: str, profile
         # perf/links/lctl loops) rather than leaking background processes
         # that pile up across retries and block future runs.
         print("Run interrupted/failed - cleaning up remote processes...")
+        if controller_exporter is not None:
+            try:
+                controller_exporter.stop()
+            except Exception as cleanup_err:
+                print(f"  warning: failed to stop controller exporter: {cleanup_err}")
         try:
             stop_elbencho_service(config, hosts, dry_run)
         except Exception as cleanup_err:

@@ -45,6 +45,7 @@ def cmd_run(args, elbencho_args: str) -> int:
         perf_freq=args.perf_freq,
         elbencho_args=elbencho_args,
         dry_run=args.dry_run,
+        live_metrics_port=args.live_metrics_port,
     )
     return 0
 
@@ -77,6 +78,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--perf-freq", type=int, default=99)
     p_run.add_argument("--label", default=None, help='Human label, e.g. "skpi+fscrypt"')
     p_run.add_argument("--dry-run", action="store_true")
+    p_run.add_argument(
+        "--live-metrics-port", type=int, default=None,
+        help=(
+            "Enable live Prometheus /metrics endpoints while the run is in progress: "
+            "each client runs benchprof-exporter on this port (CPU/Mem/process/link "
+            "gauges), and the controller serves elbencho throughput/IOPS gauges on "
+            "this port + 1. Point your existing Prometheus server's scrape config at "
+            "these; omit this flag to disable (default)."
+        ),
+    )
     p_run.set_defaults(func=cmd_run)
 
     p_report = sub.add_parser("report", help="Build report.html / report.xlsx from a run directory")
