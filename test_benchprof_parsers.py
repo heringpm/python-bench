@@ -133,6 +133,30 @@ def test_parse_sar_timestamp_with_timezone_suffix():
         check("sar timestamp with UTC suffix parses (row not dropped)", cpu.get("idle") == 83.0)
 
 
+def test_parse_sar_disambiguation_suffix():
+    # Real sadf -d combined-row output appends a literal "[...]" suffix to
+    # a field name when it collides with another activity's field name in
+    # the same row (observed: "%idle" -> "%idle[...]") - without
+    # stripping it, CPU data is silently dropped even though the row
+    # parses fine for Memory/Paging/LoadAvg.
+    with tempfile.TemporaryDirectory() as d:
+        sar_p = Path(d) / "sar.csv"
+        sar_p.write_text(
+            "# hostname;interval;timestamp;CPU;%usr;%nice;%sys;%iowait;%steal;%irq;%soft;%guest;%gnice;%idle[...];"
+            "pgpgin/s;pgpgout/s;fault/s;majflt/s;pgfree/s;pgscank/s;pgscand/s;pgsteal/s;%vmeff;"
+            "kbmemfree;kbavail;kbmemused;%memused;kbbuffers;kbcached;kbcommit;%commit;kbactive;kbinact;kbdirty;"
+            "runq-sz;plist-sz;ldavg-1;ldavg-5;ldavg-15;blocked\n"
+            "h1;1;2023-11-14 22:13:20;-1;10.00;0.00;5.00;2.00;0.00;0.00;0.00;0.00;0.00;83.00;"
+            "128;49581;0;41916;0;0;0;0;0;"
+            "1000000;900000;500000;33.00;1000;2000;100000;5.00;300000;100000;10;"
+            "0;0;0.43;0.45;0.39;0\n"
+        )
+        rows = parse_sar(str(sar_p), "", "h1", t0=1700000000)
+        cpu = {r.entity: r.value for r in rows if r.metric == "CPU"}
+        check("sar disambiguation-suffix CPU idle still extracted", cpu.get("idle") == 83.0)
+        check("sar disambiguation-suffix CPU system still extracted", cpu.get("system") == 5.0)
+
+
 def test_parse_pidstat_process_and_thread_rows():
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "pidstat.log"
@@ -258,6 +282,7 @@ if __name__ == "__main__":
     test_parse_sar_cpu_mem_net()
     test_parse_sar_combined_row_and_sys_field()
     test_parse_sar_timestamp_with_timezone_suffix()
+    test_parse_sar_disambiguation_suffix()
     test_parse_pidstat_process_and_thread_rows()
     test_parse_pidstat_iso_time_format()
     test_parse_links_diff_and_unit_conversion()

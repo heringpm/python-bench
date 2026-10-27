@@ -9,6 +9,7 @@ assumed column order. Each activity's rows are detected by which
 well-known field is present in its header (e.g. "%idle" => CPU stats).
 """
 
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -132,7 +133,13 @@ def _parse_sadf_file(path: Path, node: str, t0: float) -> List[MetricRow]:
             if not line:
                 continue
             if line.startswith("#"):
-                header = line.lstrip("#").strip().split(";")
+                raw_header = line.lstrip("#").strip().split(";")
+                # sadf -d disambiguates a field name that collides with
+                # another activity's field name in the same combined row
+                # by appending a literal "[...]" suffix (e.g. "%idle" ->
+                # "%idle[...]") - strip it so field lookups below (which
+                # use the real sar field names) still match.
+                header = [re.sub(r"\[\.\.\.\]$", "", f) for f in raw_header]
                 metric_map = _pick_metric_map(header)
                 continue
             if header is None or metric_map is None:
