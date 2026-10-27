@@ -27,6 +27,15 @@ from benchprof.schema import MetricRow, read_rows
 
 THREAD_TOP_N = 15
 
+# On a multi-node run a panel can easily end up with 30-100+ series (one
+# per node/entity). Drawing them all visible at once, stacked on a shared
+# legend, is what made the report "hard to read" - so each panel gets its
+# own legend (positioned next to its row) and only its busiest
+# VISIBLE_TOP_N series start visible; the rest start collapsed into the
+# legend (click a legend entry to show that series) instead of being
+# omitted outright.
+VISIBLE_TOP_N = 8
+
 PANELS = [
     ("Throughput", "Throughput over time", "MiB/s"),
     ("CPU", "System CPU over time", "%"),
@@ -90,22 +99,56 @@ def build_html(run_dir, out_name: str = "report.html") -> Path:
     run_dir = Path(run_dir)
     rows = _load_merged(run_dir)
 
-    fig = make_subplots(rows=len(PANELS), cols=1, shared_xaxes=True,
-                         subplot_titles=[title for _, title, _ in PANELS])
+    n = len(PANELS)
+    fig = make_subplots(
+        rows=n, cols=1, shared_xaxes=True,
+        subplot_titles=[title for _, title, _ in PANELS],
+        vertical_spacing=max(0.4 / n, 0.04),
+    )
 
+    legend_layout: Dict[str, dict] = {}
     for i, (metric, _title, unit) in enumerate(PANELS, start=1):
         sum_across_nodes = metric == "Throughput"
         series = _bucket(rows, metric, sum_across_nodes)
+
+        # Rank series by average value so the busiest ones are the ones
+        # shown by default; the rest start hidden in the legend instead
+        # of cluttering the plot (click to reveal).
+        avg = {k: (sum(v.values()) / len(v) if v else 0.0) for k, v in series.items()}
+        visible_keys = set(sorted(avg, key=avg.get, reverse=True)[:VISIBLE_TOP_N])
+
+        legend_name = "legend" if i == 1 else f"legend{i}"
+        yaxis_key = "yaxis" if i == 1 else f"yaxis{i}"
+        domain = fig.layout[yaxis_key].domain  # [y0, y1] fraction of figure height for this row
+
         for key in sorted(series):
             pts = sorted(series[key].items())
             if not pts:
                 continue
             xs, ys = zip(*pts)
-            fig.add_trace(go.Scatter(x=list(xs), y=list(ys), mode="lines", name=f"{metric}:{key}"),
-                          row=i, col=1)
+            fig.add_trace(go.Scatter(
+                x=list(xs), y=list(ys), mode="lines", name=key,
+                legend=legend_name,
+                visible=True if key in visible_keys else "legendonly",
+            ), row=i, col=1)
         fig.update_yaxes(title_text=unit, row=i, col=1)
 
-    fig.update_layout(height=320 * len(PANELS), title="benchprof report", xaxis_title="Elapsed (s)")
+        legend_layout[legend_name] = dict(
+            title=dict(text=metric + (" (top busiest shown)" if len(series) > VISIBLE_TOP_N else "")),
+            y=domain[1], yanchor="top", x=1.02, xanchor="left",
+            font=dict(size=10),
+        )
+
+    fig.update_layout(
+        height=340 * n,
+        title="benchprof report",
+        xaxis_title="Elapsed (s)",
+        hovermode="x unified",
+        margin=dict(r=220),  # room for the per-panel legends on the right
+        **legend_layout,
+    )
+    for ax in fig.select_xaxes():
+        ax.update(matches="x")
 
     out_path = run_dir / out_name
     pio.write_html(fig, file=str(out_path), auto_open=False)
