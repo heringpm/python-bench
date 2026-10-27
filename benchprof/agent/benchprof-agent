@@ -64,26 +64,32 @@ start_lctl() {
   while :; do
     {
       echo "### $(date +%s)"
-      lctl get_param osc.*.rpc_stats 2>/dev/null
-      lctl get_param osc.*.stats 2>/dev/null
-      lctl get_param llite.*.stats 2>/dev/null
-      lctl get_param sptlrpc.encrypt_page_pools 2>/dev/null
+      timeout 4 lctl get_param osc.*.rpc_stats 2>/dev/null
+      timeout 4 lctl get_param osc.*.stats 2>/dev/null
+      timeout 4 lctl get_param llite.*.stats 2>/dev/null
+      timeout 4 lctl get_param sptlrpc.encrypt_page_pools 2>/dev/null
     } >> "$out"
     sleep 5
   done
 }
 
 capture_config() {
+  # Every command here is wrapped in `timeout` - a single unresponsive
+  # command (e.g. lctl/chronyc hanging if Lustre or chrony is in a bad
+  # state on this node) must not be able to block capture_config(), since
+  # start() calls it synchronously before returning and an indefinite
+  # hang here means `clush ... benchprof-agent start` never returns,
+  # silently stalling the whole benchprof run.
   out="$RUNDIR/config.$HOST.txt"
   {
-    echo "### lctl sptlrpc flavor"; lctl get_param -R 'mdc.*.*' 'osc.*.*' 2>/dev/null | grep -i sptlrpc
-    echo "### checksums"; lctl get_param osc.*.checksum_type osc.*.checksums 2>/dev/null
-    echo "### rpc tuning"; lctl get_param osc.*.max_rpcs_in_flight osc.*.max_pages_per_rpc 2>/dev/null
+    echo "### lctl sptlrpc flavor"; timeout 5 lctl get_param -R 'mdc.*.*' 'osc.*.*' 2>/dev/null | grep -i sptlrpc
+    echo "### checksums"; timeout 5 lctl get_param osc.*.checksum_type osc.*.checksums 2>/dev/null
+    echo "### rpc tuning"; timeout 5 lctl get_param osc.*.max_rpcs_in_flight osc.*.max_pages_per_rpc 2>/dev/null
     echo "### crypto drivers"; cat /proc/crypto 2>/dev/null | awk '/^name/{n=$3} /^driver/{print n, $3}'
     echo "### lscpu"; lscpu 2>/dev/null
     echo "### kernel"; uname -r
-    echo "### lustre version"; cat /sys/fs/lustre/version 2>/dev/null || lctl get_param version 2>/dev/null
-    echo "### chrony"; chronyc tracking 2>/dev/null
+    echo "### lustre version"; cat /sys/fs/lustre/version 2>/dev/null || timeout 5 lctl get_param version 2>/dev/null
+    echo "### chrony"; timeout 5 chronyc tracking 2>/dev/null
     echo "### link_layer"; link_layer_for_ib
   } > "$out"
 }
