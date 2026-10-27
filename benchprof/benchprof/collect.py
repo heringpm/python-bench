@@ -108,7 +108,13 @@ def run_benchmark(config: BenchprofConfig, hosts: List[str], label: str, profile
     t0 = time.time()
     elbencho_cmd = (
         f"{config.elbencho_path} --hostsfile {config.machine_file} "
-        f"--livecsv {run_dir}/elbencho_live.csv --livecsvex --liveint 1000 {elbencho_args}"
+        f"--livecsv {run_dir}/elbencho_live.csv --livecsvex --liveint 1000 "
+        # --live1n: one line per --liveint update, written to stderr and
+        # never overwritten in place (elbencho's default full-screen live
+        # display redraws via ANSI escapes, which can look like "nothing is
+        # happening" depending on the terminal/session) - this gives clear,
+        # scrollable, loggable console progress alongside the CSV.
+        f"--live1n {elbencho_args}"
     )
     print(f"Running: {elbencho_cmd}")
     run_cmd(elbencho_cmd, dry_run=dry_run)
