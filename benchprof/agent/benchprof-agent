@@ -96,18 +96,27 @@ capture_config() {
 
 start() {
   : > "$PIDFILE"
-  sadc -S XALL 1 "$RUNDIR/sa.$HOST" >/dev/null 2>&1 &
+  sadc -S XALL 1 "$RUNDIR/sa.$HOST" </dev/null >/dev/null 2>&1 &
   echo "sadc:$!" >> "$PIDFILE"
-  pidstat -t -u -h 1 > "$RUNDIR/pidstat.$HOST.log" 2>/dev/null &
+  pidstat -t -u -h 1 </dev/null > "$RUNDIR/pidstat.$HOST.log" 2>/dev/null &
   echo "pidstat:$!" >> "$PIDFILE"
-  poll_links &
+  # Explicitly redirect stdin/stdout/stderr here, not just inside the
+  # functions: even though poll_links/start_lctl write their own output
+  # via `>>` to files internally, the backgrounded subshell itself still
+  # inherits the parent's stdin/stdout/stderr - which, under
+  # clush/ssh, are the ssh channel/pty. ssh won't return (and thus
+  # clush/`benchprof-agent start` never returns) until every process
+  # holding those fds open exits, which these loops never do until
+  # `stop()` kills them - so without this, every `benchprof run` hangs
+  # forever at start_agents().
+  poll_links </dev/null >/dev/null 2>&1 &
   echo "links:$!" >> "$PIDFILE"
-  start_lctl &
+  start_lctl </dev/null >/dev/null 2>&1 &
   echo "lctl:$!" >> "$PIDFILE"
   capture_config
   if [ "$PROFILE" = "full" ]; then
     perf record -e cpu-clock -F "$PERF_FREQ" -a -g -k CLOCK_REALTIME \
-      -o "$RUNDIR/perf.$HOST.data" -- sleep 86400 >/dev/null 2>&1 &
+      -o "$RUNDIR/perf.$HOST.data" -- sleep 86400 </dev/null >/dev/null 2>&1 &
     echo "perf:$!" >> "$PIDFILE"
   fi
 }
