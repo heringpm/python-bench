@@ -1,0 +1,158 @@
+#!/usr/bin/python3
+"""
+Standalone (no pytest) unit tests for benchprof/benchprof/parsers/*.py and
+merge.py. Run with:
+
+    python3 test_benchprof_parsers.py
+"""
+
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent / "benchprof"))
+
+from benchprof.parsers.elbencho import parse_elbencho
+from benchprof.parsers.sar import parse_sar
+from benchprof.parsers.pidstat import parse_pidstat
+from benchprof.parsers.links import parse_links
+from benchprof.parsers.lctl import parse_lctl
+from benchprof.merge import merge_run
+import json
+
+FAILURES = []
+
+
+def check(name, cond):
+    if cond:
+        print(f"PASS: {name}")
+    else:
+        print(f"FAIL: {name}")
+        FAILURES.append(name)
+
+
+def test_parse_elbencho_rank_mapping():
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "live.csv"
+        p.write_text(
+            "ISO Date,Label,Phase,RuntimeMS,Rank,MixType,Done%,DoneBytes,MiB/s,IOPS,Entries,Entries/s,Lat Ent us,Lat IO us\n"
+            "2023-11-14 22:13:20,,main,1000,0,,50,1048576,100.0,25600,10,10,0,40\n"
+            "2023-11-14 22:13:20,,main,1000,1,,50,1048576,120.0,30720,10,10,0,35\n"
+        )
+        rows = parse_elbencho(str(p), ["client01", "client02"], t0=1700000000, phases=[])
+        tput = {r.node: r.value for r in rows if r.metric == "Throughput"}
+        check("elbencho rank->host mapping", tput == {"client01": 100.0, "client02": 120.0})
+        check("elbencho elapsed_sec is 0 at t0", all(abs(r.elapsed_sec) < 1e-6 for r in rows))
+
+
+def test_parse_sar_cpu_mem_net():
+    with tempfile.TemporaryDirectory() as d:
+        sar_p = Path(d) / "sar.csv"
+        sar_p.write_text(
+            "# hostname;interval;timestamp;CPU;%usr;%nice;%system;%iowait;%steal;%irq;%soft;%guest;%gnice;%idle\n"
+            "h1;1;2023-11-14 22:13:20;-1;10.00;0.00;5.00;2.00;0.00;0.00;0.00;0.00;0.00;83.00\n"
+            "# hostname;interval;timestamp;kbmemfree;kbavail;kbmemused;%memused;kbbuffers;kbcached;kbcommit;%commit;kbactive;kbinact;kbdirty\n"
+            "h1;1;2023-11-14 22:13:20;1000000;900000;500000;33.00;1000;2000;100000;5.00;300000;100000;10\n"
+        )
+        net_p = Path(d) / "sar_net.csv"
+        net_p.write_text(
+            "# hostname;interval;timestamp;IFACE;rxpck/s;txpck/s;rxkB/s;txkB/s;rxcmp/s;txcmp/s;rxmcst/s;%ifutil\n"
+            "h1;1;2023-11-14 22:13:20;eth0;100.00;90.00;1000.00;900.00;0.00;0.00;0.00;5.00\n"
+        )
+        rows = parse_sar(str(sar_p), str(net_p), "h1", t0=1700000000)
+        cpu = {r.entity: r.value for r in rows if r.metric == "CPU"}
+        mem = {r.entity: r.value for r in rows if r.metric == "Memory"}
+        net = {r.entity: r.value for r in rows if r.metric == "NetworkIface"}
+        check("sar CPU %usr -> user entity", cpu.get("user") == 10.0)
+        check("sar CPU idle entity", cpu.get("idle") == 83.0)
+        check("sar Memory used%", mem.get("used") == 33.0)
+        check("sar NetworkIface eth0/rx", net.get("eth0/rx") == 1000.0)
+
+
+def test_parse_pidstat_skips_threads():
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "pidstat.log"
+        p.write_text(
+            "Linux 5.14.0 (h1)  11/14/2023  _x86_64_ (16 CPU)\n\n"
+            "#      Time   UID      TGID       TID    %usr %system  %guest   %wait    %CPU   CPU  Command\n"
+            " 1700000000     0         100         -    5.00    2.00    0.00    0.00    7.00     1  elbencho\n"
+            " 1700000000     0           -       101    5.00    2.00    0.00    0.00    7.00     1  |__worker\n"
+        )
+        rows = parse_pidstat(str(p), "h1", t0=1700000000)
+        check("pidstat only emits process-level rows", len(rows) == 1)
+        check("pidstat ProcessCPU value", rows[0].value == 7.0 and rows[0].entity == "elbencho")
+
+
+def test_parse_links_diff_and_unit_conversion():
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "links.csv"
+        p.write_text(
+            "epoch,device,port,direction,bytes_raw,kind\n"
+            "1700000000,mlx5_0,1,tx,1000,ib\n"
+            "1700000001,mlx5_0,1,tx,3000,ib\n"
+        )
+        rows = parse_links(str(p), "h1", t0=1700000000)
+        check("links produces one diffed rate row", len(rows) == 1)
+        # delta=2000 words * 4 bytes/word = 8000 bytes over 1s -> 8000*8/1e9 Gb/s
+        expected = (2000 * 4 * 8) / 1e9
+        check("links Gb/s conversion", abs(rows[0].value - expected) < 1e-12)
+
+    with tempfile.TemporaryDirectory() as d2:
+        # A counter reset (value goes down) must be skipped, not reported
+        # as a bogus negative rate.
+        p2 = Path(d2) / "links2.csv"
+        p2.write_text(
+            "epoch,device,port,direction,bytes_raw,kind\n"
+            "1700000000,mlx5_0,1,tx,5000,ib\n"
+            "1700000001,mlx5_0,1,tx,100,ib\n"
+        )
+        rows2 = parse_links(str(p2), "h1", t0=1700000000)
+        check("links skips counter reset", len(rows2) == 0)
+
+
+def test_parse_lctl_cumulative():
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "lctl.log"
+        p.write_text(
+            "### 1700000000\n"
+            "osc.lustre-OST0000-osc.stats=\n"
+            "snapshot_time             1700000000.123456 secs.usecs\n"
+            "read_bytes                10 samples [bytes] 4096 1048576 1000000\n"
+            "write_bytes               5 samples [bytes] 4096 1048576 500000\n"
+        )
+        rows = parse_lctl(str(p), "h1", t0=1700000000)
+        check("lctl parses cumulative read/write rows", len(rows) == 2)
+        check("lctl entity includes device", rows[0].entity == "lustre-OST0000-osc/read")
+
+
+def test_merge_run_end_to_end():
+    with tempfile.TemporaryDirectory() as d:
+        run_dir = Path(d)
+        (run_dir / "nodes" / "h1").mkdir(parents=True)
+        (run_dir / "meta.json").write_text(json.dumps({
+            "run_id": "t", "label": "", "hosts": ["h1"], "profile": "light",
+            "t0": 1700000000, "elbencho_cmd": "", "phases": [{"name": "main", "start": 0, "end": 5}],
+        }))
+        (run_dir / "elbencho_live.csv").write_text(
+            "ISO Date,Label,Phase,RuntimeMS,Rank,MixType,Done%,DoneBytes,MiB/s,IOPS,Entries,Entries/s,Lat Ent us,Lat IO us\n"
+            "2023-11-14 22:13:20,,main,1000,0,,50,1048576,100.0,25600,10,10,0,40\n"
+        )
+        out = merge_run(run_dir)
+        check("merge_run writes merged.csv", out.exists())
+        content = out.read_text()
+        check("merge_run output has header", content.splitlines()[0].startswith("Node,"))
+        check("merge_run phase filled in from meta.json", ",main," in content)
+
+
+if __name__ == "__main__":
+    test_parse_elbencho_rank_mapping()
+    test_parse_sar_cpu_mem_net()
+    test_parse_pidstat_skips_threads()
+    test_parse_links_diff_and_unit_conversion()
+    test_parse_lctl_cumulative()
+    test_merge_run_end_to_end()
+
+    if FAILURES:
+        print(f"\n{len(FAILURES)} test(s) failed: {FAILURES}")
+        sys.exit(1)
+    print("\nAll tests passed.")

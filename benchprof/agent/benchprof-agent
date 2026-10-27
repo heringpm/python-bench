@@ -120,7 +120,16 @@ stop() {
   wait 2>/dev/null
 
   if [ -s "$RUNDIR/sa.$HOST" ]; then
-    sadf -d -- -u ALL -r -B -q -n DEV "$RUNDIR/sa.$HOST" > "$RUNDIR/sar.$HOST.csv" 2>/dev/null
+    # Split into two sadf passes: CPU/mem/load/IO are single-instance
+    # (one row per timestamp) while -n DEV is multi-instance (one row per
+    # NIC per timestamp); mixing them in one sadf -d call produces
+    # misaligned columns, so each goes to its own CSV for sar.py to parse.
+    # -h prints a "# hostname;interval;timestamp;<field names>" header line
+    # before each activity's block, so sar.py can identify which stat each
+    # row belongs to by field names instead of guessing column order
+    # (which differs across sysstat versions).
+    sadf -d -h -- -u ALL -r -B -q "$RUNDIR/sa.$HOST" > "$RUNDIR/sar.$HOST.csv" 2>/dev/null
+    sadf -d -h -- -n DEV "$RUNDIR/sa.$HOST" > "$RUNDIR/sar_net.$HOST.csv" 2>/dev/null
   fi
 
   if [ -f "$RUNDIR/perf.$HOST.data" ]; then

@@ -50,8 +50,9 @@ def cmd_run(args, elbencho_args: str) -> int:
 
 
 def cmd_report(args) -> int:
-    print("benchprof report: not implemented yet (milestone 2)", file=sys.stderr)
-    return 1
+    from benchprof import report
+    report.build(args.run_dir)
+    return 0
 
 
 def cmd_compare(args) -> int:
