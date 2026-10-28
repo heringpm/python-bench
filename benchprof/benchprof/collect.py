@@ -10,7 +10,6 @@ milestone 3.
 
 import json
 import re
-import shlex
 import time
 from datetime import datetime
 from pathlib import Path
@@ -23,30 +22,6 @@ from utils.shell import run_cmd
 
 SETTLE_BEFORE_S = 5
 SETTLE_AFTER_S = 5
-
-_WRITE_FLAGS = ("--write", "-w")
-_MKDIRS_FLAGS = ("--mkdirs", "-d")
-
-
-def _ensure_mkdirs(elbencho_args: str) -> str:
-    """Auto-add --mkdirs when --write is requested without it, so users
-    don't need to remember to create directories first (elbencho allows
-    --mkdirs and --write in the same invocation - it internally runs the
-    phases in the sensible order: mkdirs, then write, etc). This keeps
-    `benchprof run` point-and-click instead of requiring a separate
-    --mkdirs pass like the older benchmarks/elbencho.py helper does."""
-    try:
-        tokens = shlex.split(elbencho_args)
-    except ValueError:
-        # Unbalanced quotes etc - leave args untouched and let elbencho
-        # itself report the error.
-        return elbencho_args
-    has_write = any(t in _WRITE_FLAGS for t in tokens)
-    has_mkdirs = any(t in _MKDIRS_FLAGS for t in tokens)
-    if has_write and not has_mkdirs:
-        tokens.insert(0, "--mkdirs")
-        return shlex.join(tokens)
-    return elbencho_args
 
 
 def _remote_exec(config: BenchprofConfig, hosts: List[str], remote_cmd: str, dry_run: bool):
@@ -206,8 +181,6 @@ def run_benchmark(config: BenchprofConfig, hosts: List[str], label: str, profile
         print(f"Settling {SETTLE_BEFORE_S}s before elbencho so panels show an idle baseline...")
         if not dry_run:
             time.sleep(SETTLE_BEFORE_S)
-
-        elbencho_args = _ensure_mkdirs(elbencho_args)
 
         t0 = time.time()
         elbencho_cmd = (
